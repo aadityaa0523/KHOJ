@@ -158,13 +158,13 @@ class BleMeshRadio(
 
     /**
      * Starts the radio. Can be configured for tx-only, rx-only, specific PHY sets, or legacy advertising for bench testing.
-     * Defaults maintain existing behavior (advertise on 1M + Coded when supported, scan on all supported PHYs).
+     * Defaults to 1M only; Coded PHY is started on-demand as an emergency burst.
      */
     fun start(
         nodeId: Int,
         advertise: Boolean = true,
         scan: Boolean = true,
-        advSets: AdvSets = AdvSets.M1_AND_CODED,
+        advSets: AdvSets = AdvSets.M1,
         legacy: Boolean = false,
     ): String? {
         val a = adapter ?: return "This phone has no Bluetooth."
@@ -187,6 +187,29 @@ class BleMeshRadio(
             a.bluetoothLeScanner?.startScan(scanFilters(), scanSettings(legacy), scanCallback) ?: return "Bluetooth scanner unavailable."
         }
         return null
+    }
+
+    /**
+     * Dynamically turns the LE Coded advertising set on or off.
+     * In Phase 3, LE Coded runs as an emergency burst rather than an always-on set.
+     */
+    fun setCodedAdvertising(on: Boolean) {
+        if (!codedSupported || legacyMode || !running) return
+        val existing = advertisers.firstOrNull { it.phy == BluetoothDevice.PHY_LE_CODED }
+        if (on) {
+            if (existing == null) {
+                val adv = Advertiser(BluetoothDevice.PHY_LE_CODED, false)
+                advertisers.add(adv)
+                adv.start()
+                log("Started LE Coded advertising set (emergency burst).")
+            }
+        } else {
+            if (existing != null) {
+                existing.stop()
+                advertisers.remove(existing)
+                log("Stopped LE Coded advertising set.")
+            }
+        }
     }
 
     private var running = false

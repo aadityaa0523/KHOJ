@@ -181,6 +181,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     /** Nearby is expensive (measured: about 3x the Bluetooth stack's CPU on an iQOO SM8850), so members run it on demand. */
     private var nearbyUntil = 0L
     private var lastNeighborMs = 0L
+    private var codedBurstUntilMs = 0L
     private val internet = InternetRelay(context, scope) { onOtherFrame(it, TransportKind.INTERNET, -100) }
     private val bleHealth = app.linkfill.core.mesh.TransportHealth(TransportKind.BLE)
     // Default radios: Wi-Fi Aware where the phone has it; otherwise Nearby, which reaches Wi-Fi Direct/hotspot underneath.
@@ -441,10 +442,8 @@ class MeshController(private val context: Context, private val scope: CoroutineS
             "channelSounding=${context.packageManager.hasSystemFeature("android.hardware.bluetooth_le.channel_sounding")} " +
             "batteryUnrestricted=${batteryUnrestricted()} role=$role")
         // A fresh node id per run keeps the AES-GCM nonces (node id, packet counter) unique across restarts.
-        val r = MeshRouter(id, crew, MeshConfig(codedSupported = radio.codedSupported), random, this, predictor)
-        // Link AI: predicted chance each neighbour's link drops in the next 5 s, on the NPU when it opens.
-        predictor?.meta?.let { m -> m["medium_threshold"]?.toDoubleOrNull()?.let { r.riskMedium = it }; m["high_threshold"]?.toDoubleOrNull()?.let { r.riskHigh = it } }
-        linkAi?.let { ai -> r.riskModel = ai::predict; r.riskMedium = ai.mediumThreshold; r.riskHigh = ai.highThreshold }
+        // Phase 3: Link AI model is set aside until Phase 7 retrains on 1s dwell data. Fallback is 1 - pdr(2s).
+        val r = MeshRouter(id, crew, MeshConfig(codedSupported = radio.codedSupported), random, this, predictor = null)
         router = r
         startedAt = System.currentTimeMillis()
         labeler = LinkLabeler(r.links)
@@ -469,11 +468,39 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         _state.update { it.copy(running = true, error = null) }
         loop = scope.launch {
             var n = 0L
+            var lastFrameSentMs = 0L
+            var lastUrgentPreemptMs = 0L
             while (isActive) {
                 val now = System.currentTimeMillis()
-                // Idle link-measurement frames dwell 500 ms (two ticks): at Android's 100 ms advertising floor a 250 ms frame
-                // got only ~2 transmissions and receivers caught ~50% of them at 1 m (measured). Real packets still go every tick.
-                r.nextFrame(now, allowFiller = n % 2 == 0L)?.let { frame -> transmit(r, frame) }
+
+                // Phase 3: LE Coded emergency burst control
+                val lowDensity = r.links.neighbors.values.count { now - it.lastRxMs <= 10_000 } < 10
+                val urgentDue = r.hasUrgentDue(now)
+                val shouldBurstCoded = radio.codedSupported && (
+                    (urgentDue && r.is1mHealthPoor(now) && lowDensity) ||
+                    r.mode == LinkMode.HIGH
+                )
+                if (shouldBurstCoded) {
+                    if (codedBurstUntilMs <= now) {
+                        codedBurstUntilMs = now + 10_000L
+                        radio.setCodedAdvertising(true)
+                    }
+                } else if (now >= codedBurstUntilMs) {
+                    radio.setCodedAdvertising(false)
+                }
+
+                // Phase 3: Frame dwell (1000 ms routine, 3000 ms low-power, urgent pre-empt >= 250 ms)
+                val dwell = if (r.lowPower) r.config.lowPowerDwellMs else r.config.dwellMs
+                val dwellExpired = (now - lastFrameSentMs) >= dwell
+                val urgentPreempt = urgentDue && ((now - lastFrameSentMs) >= 250) && ((now - lastUrgentPreemptMs) >= 250)
+
+                if (dwellExpired || urgentPreempt) {
+                    r.nextFrame(now, allowFiller = dwellExpired)?.let { frame ->
+                        transmit(r, frame)
+                        lastFrameSentMs = now
+                        if (urgentPreempt) lastUrgentPreemptMs = now
+                    }
+                }
                 r.tick(now)
                 safety.tick(now)
                 find.evaluate(now)
@@ -501,6 +528,8 @@ class MeshController(private val context: Context, private val scope: CoroutineS
 
     fun stop() {
         loop?.cancel(); loop = null
+        codedBurstUntilMs = 0L
+        radio.setCodedAdvertising(false)
         radio.stop()
         aware.stop(); nearby?.stop(); pair?.stop(); internet.stop()
         safety.stop(); rewind.stop(); siren.stop(); pendingSos = null

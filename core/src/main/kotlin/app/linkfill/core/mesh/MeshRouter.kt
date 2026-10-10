@@ -30,6 +30,8 @@ class MeshConfig(
     /** At most this many carried packets per offer, newest first. */
     val offerMax: Int = 8,
     val offerEveryMs: Long = 5_000,
+    val dwellMs: Long = 1_000L,
+    val lowPowerDwellMs: Long = 3_000L,
 )
 
 interface MeshListener {
@@ -58,7 +60,7 @@ class MeshStats {
 class MeshRouter(
     val nodeId: Int,
     var crew: CrewKey?,
-    private val config: MeshConfig,
+    val config: MeshConfig,
     private val random: Random,
     private val listener: MeshListener,
     var predictor: LossPredictor? = null,
@@ -250,6 +252,38 @@ class MeshRouter(
     }
 
     private fun nextLinkSeq(): Int { linkSeq = (linkSeq + 1) and 0xFFFF; return linkSeq }
+
+    /** True when a priority-0 urgent frame (SOS, ACK, PUBLIC_SOS, FOUND, OFFICIAL) is due for transmission. */
+    fun hasUrgentDue(now: Long): Boolean =
+        queue.any { it.priority == 0 && it.dueAt <= now }
+
+    /**
+     * Determines whether a new frame should be fetched and transmitted under the Phase 3 dwell rules:
+     * - Routine frames dwell on air for [MeshConfig.dwellMs] (or [MeshConfig.lowPowerDwellMs]).
+     * - Priority-0 urgent frames may pre-empt the dwell early, capped at once per 250 ms.
+     */
+    fun shouldTransmit(
+        lastFrameSentMs: Long,
+        lastUrgentPreemptMs: Long,
+        now: Long,
+        lowPower: Boolean = this.lowPower,
+    ): Boolean {
+        val dwell = if (lowPower) config.lowPowerDwellMs else config.dwellMs
+        val dwellExpired = (now - lastFrameSentMs) >= dwell
+        val urgentDue = hasUrgentDue(now)
+        val urgentPreempt = urgentDue && ((now - lastFrameSentMs) >= 250) && ((now - lastUrgentPreemptMs) >= 250)
+        return dwellExpired || urgentPreempt
+    }
+
+    /**
+     * True if 1M link health is poor: either no neighbor heard in the last 10 s, or every active neighbor
+     * has pdr_2s < 0.5. Used alongside low density to gate LE Coded emergency bursts.
+     */
+    fun is1mHealthPoor(now: Long): Boolean {
+        val active = links.neighbors.values.filter { now - it.lastRxMs <= 10_000 }
+        if (active.isEmpty()) return true
+        return active.all { links.pdr(it.id, 2_000, now) < 0.5 }
+    }
 
     fun tick(now: Long) {
         for (u in urgent.values.toList()) {

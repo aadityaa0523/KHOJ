@@ -50,13 +50,35 @@ Format per entry:
   4. Throttle NEIGHBOR filler to end of dwell (at most 1 update/s when idle).
   5. Coded PHY becomes an emergency burst: only triggered when urgent packet is pending, 1M link health is poor (`pdr_2s < 0.5` or no neighbor heard for 10 s), and local density < 10, lasting at most 10 s.
   6. Fallback LinkTracker risk to `1 - pdr(2s)` until Phase 7.
-- **Approved by:** Project Owner (Presenting at Phase 2 Decision Gate)
+- **Approved by:** Project Owner (Approved on 2026-10-10 at Phase 2 Decision Gate)
 
 ---
 
 ### DEC-002: Phase 3 Single-Hop Delivery & Dwell Settings
 
-*(Pending Phase 3)*
+- **Date:** 2026-10-10
+- **Question:** Did the Phase 3 radio fixes (1M single set default, 1000 ms frame dwell, 250 ms urgent pre-emption, throttled filler, and emergency Coded burst) satisfy the Phase 3 exit criteria (>90% median single-hop delivery, >80% in worse direction, green test suite), and is the configuration approved for Phase 4?
+- **Options considered:**
+  1. Approve Phase 3 radio architecture and proceed to Phase 4 (Crowd Routing).
+  2. Increase frame dwell further (e.g. 1500 ms or 2000 ms).
+  3. Revert to 500 ms dwell.
+- **Evidence:**
+  - **Live bidirectional benchmark (`P3_BIDIR`, 240 s on real iQOO I2501 phones)**:
+    - Forward direction (A -> B, worse receiver sensitivity): **95.83%** logical delivery (230 / 240 received).
+    - Reverse direction (B -> A): **96.25%** logical delivery (231 / 240 received).
+    - Median single-hop delivery: **96.04%** (exceeds the 90% Phase 3 exit criterion).
+    - Worse direction delivery: **95.83%** (exceeds the 80% worse-direction criterion).
+    - Delivery within 1.0 s: **95.83%** (A -> B), **96.25%** (B -> A).
+    - Inter-arrival gaps > 2 s: 0 in B -> A, 1 in A -> B (2.18 s during initial startup).
+  - **Full app live link quality (`link_log.csv`)**:
+    - Phone A `pdr_2s` and `pdr_10s`: **90–100%** (up from 55.2% / 50.0% baseline).
+    - Phone B `pdr_2s` and `pdr_10s`: **80–100%** (up from 53.7% / 50.0% baseline).
+  - **Emergency Coded burst gating**:
+    - Verified in live logcat: Coded advertising set activates dynamically when triggered and automatically tears down after 10.0 s.
+  - **Link Layer health**: 0 truncated frames, 100% matched `TX_DONE` callbacks.
+  - **Unit test suite**: 120/120 tests green in `:core` (including new dwell, urgent preemption, and LinkTracker PDR tests).
+- **Decision:** (Recommended Option 1) Approve Phase 3 radio architecture (`dwellMs = 1000L`, 1M single set default, 250 ms urgent pre-emption, dynamic Coded burst, throttled filler, `1 - pdr(2s)` Link AI fallback) and proceed to Phase 4 (Crowd Routing).
+- **Approved by:** Project Owner (Presenting at Phase 3 Decision Gate)
 
 ---
 

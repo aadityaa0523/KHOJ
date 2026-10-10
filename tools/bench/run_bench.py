@@ -105,6 +105,12 @@ RUN_SPECS: Dict[str, Dict[str, Any]] = {
         "B": {"role": "both", "sets": "1m", "updateMs": 0, "bytes": 200, "legacy": False, "nearby": "discover", "gatt": "off"},
         "seconds": 240,
     },
+    "P3_BIDIR": {
+        "desc": "Phase 3 Radio Fix: Both (A) <-> Both (B), 1M only, updateMs=1000 (1s frame dwell)",
+        "A": {"role": "both", "sets": "1m", "updateMs": 1000, "bytes": 200, "legacy": False, "nearby": "off", "gatt": "off"},
+        "B": {"role": "both", "sets": "1m", "updateMs": 1000, "bytes": 200, "legacy": False, "nearby": "off", "gatt": "off"},
+        "seconds": 240,
+    },
 }
 
 

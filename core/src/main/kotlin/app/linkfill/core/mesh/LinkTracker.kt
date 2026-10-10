@@ -69,7 +69,7 @@ class LinkTracker(private val slotMs: Long = SLOT_MS, private val historyMs: Lon
     }
 
     companion object {
-        const val SLOT_MS = 250L
+        const val SLOT_MS = 1_000L
         private const val FLOOR = -105.0
 
         private fun median(v: List<Double>): Double? = if (v.isEmpty()) null else v.sorted().let { it[it.size / 2] }

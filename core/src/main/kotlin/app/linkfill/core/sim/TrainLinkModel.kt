@@ -23,16 +23,17 @@ class LinkLabeler(private val tracker: LinkTracker, private val slotMs: Long = L
     fun sample(id: Int, t: Long, features: DoubleArray) { pending.addLast(Pending(id, t, features)) }
 
     /**
-     * Labels samples at least 5 s old. loss_next_window = fewer than 2 frames in the next 600 ms
-     * (2 expected at one frame per 250 ms, with slack for timing jitter); lost_5s = no frame in 5 s.
+     * Labels samples at least 5 s old. loss_next_window = fewer than 2 frames in the next window
+     * (2 expected at one frame per slotMs); lost_5s = no frame in 5 s.
      */
     fun finalize(now: Long, emit: (id: Int, t: Long, features: DoubleArray, loss: Int, lost5s: Int) -> Unit) {
+        val windowMs = (slotMs * 2.4).toLong()
         while (pending.isNotEmpty() && now - pending.first().t >= 5_000) {
             val s = pending.removeFirst()
             val frames = tracker.neighbors[s.id]?.frames.orEmpty()
-            val next600 = frames.count { it.timeMs > s.t && it.timeMs <= s.t + 600 }
+            val nextWindow = frames.count { it.timeMs > s.t && it.timeMs <= s.t + windowMs }
             val next5 = frames.count { it.timeMs > s.t && it.timeMs <= s.t + 5_000 }
-            emit(s.id, s.t, s.features, if (next600 < 2) 1 else 0, if (next5 == 0) 1 else 0)
+            emit(s.id, s.t, s.features, if (nextWindow < 2) 1 else 0, if (next5 == 0) 1 else 0)
         }
     }
 }

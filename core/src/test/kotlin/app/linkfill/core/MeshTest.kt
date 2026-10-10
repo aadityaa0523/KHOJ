@@ -170,10 +170,102 @@ class MeshTest {
     @Test fun trackerMeasuresDeliveryRatio() {
         val t = LinkTracker()
         var now = t0
-        for (seq in 1..40) { if (seq % 2 == 0) t.onFrame(5, seq, -70, false, now); now += 250 }
-        assertEquals(0.5, t.pdr(5, 10_000, now - 250), 0.05)
-        assertTrue(!t.onFrame(5, 40, -70, false, now - 250)) // repeated advertisement of the same frame
+        for (seq in 1..10) { if (seq % 2 == 0) t.onFrame(5, seq, -70, false, now); now += 1_000 }
+        assertEquals(0.5, t.pdr(5, 10_000, now - 1_000), 0.05)
+        assertTrue(!t.onFrame(5, 10, -70, false, now - 1_000)) // repeated advertisement of the same frame
         assertEquals(LinkFeatures.ALL.size, t.features(5, now, 0, false).size)
+    }
+
+    @Test fun dwellIsRespectedForRoutineFrames() {
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(dwellMs = 1_000L), Random(1), object : MeshListener {})
+        r.originate(MeshMessage.Text("routine message"), t0)
+
+        // Routine frame is not urgent
+        assertTrue(!r.hasUrgentDue(t0))
+
+        // Before dwellMs has elapsed, shouldTransmit is false
+        val lastSent = t0
+        val lastPreempt = t0
+        assertTrue(!r.shouldTransmit(lastSent, lastPreempt, t0 + 250))
+        assertTrue(!r.shouldTransmit(lastSent, lastPreempt, t0 + 500))
+        assertTrue(!r.shouldTransmit(lastSent, lastPreempt, t0 + 999))
+
+        // Once dwellMs has elapsed, shouldTransmit is true
+        assertTrue(r.shouldTransmit(lastSent, lastPreempt, t0 + 1_000))
+        assertTrue(r.shouldTransmit(lastSent, lastPreempt, t0 + 1_250))
+    }
+
+    @Test fun urgentFramePreemptsDwellWith250msRateLimit() {
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(dwellMs = 1_000L), Random(1), object : MeshListener {})
+        r.originate(MeshMessage.Sos(25.0, 82.0, "help"), t0)
+
+        // SOS is priority-0 urgent
+        assertTrue(r.hasUrgentDue(t0))
+
+        val lastSent = t0
+        val lastPreempt = t0
+
+        // If less than 250 ms since last frame or last preempt, cannot pre-empt yet
+        assertTrue(!r.shouldTransmit(lastSent, lastPreempt, t0 + 100))
+        assertTrue(!r.shouldTransmit(lastSent, lastPreempt, t0 + 249))
+
+        // Once >= 250 ms, urgent frame pre-empts early even though routine dwell (1000 ms) has not expired
+        assertTrue(r.shouldTransmit(lastSent, lastPreempt, t0 + 250))
+        assertTrue(r.shouldTransmit(lastSent, lastPreempt, t0 + 500))
+
+        // If an urgent frame pre-empted at t0 + 250, next pre-emption cannot happen before t0 + 500
+        val newLastSent = t0 + 250
+        val newLastPreempt = t0 + 250
+        assertTrue(!r.shouldTransmit(newLastSent, newLastPreempt, t0 + 350))
+        assertTrue(!r.shouldTransmit(newLastSent, newLastPreempt, t0 + 499))
+        assertTrue(r.shouldTransmit(newLastSent, newLastPreempt, t0 + 500))
+    }
+
+    @Test fun fillerNeverSentWhileRealFrameIsDue() {
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(), Random(1), object : MeshListener {})
+
+        // With empty queue, nextFrame with allowFiller = true returns NEIGHBOR filler
+        val filler = r.nextFrame(t0, allowFiller = true)
+        assertNotNull(filler)
+        val decodedFiller = MeshPacket.decode(filler!!)!!
+        assertEquals(MeshType.NEIGHBOR, decodedFiller.type)
+
+        // With empty queue, allowFiller = false returns null
+        assertNull(r.nextFrame(t0, allowFiller = false))
+
+        // Now queue a real text message
+        r.originate(MeshMessage.Text("urgent notice"), t0)
+
+        // While real frame is due, allowFiller = true MUST return the real frame, never a filler!
+        val frame = r.nextFrame(t0, allowFiller = true)
+        assertNotNull(frame)
+        val decoded = MeshPacket.decode(frame!!)!!
+        assertEquals(MeshType.TEXT, decoded.type)
+    }
+
+    @Test fun poor1mHealthDetection() {
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(), Random(1), object : MeshListener {})
+
+        // With no neighbors heard in last 10s, 1M health is poor
+        assertTrue(r.is1mHealthPoor(t0))
+
+        // If a neighbor is heard consistently with 100% PDR, 1M health is NOT poor
+        var now = t0
+        for (seq in 1..5) {
+            r.links.onFrame(99, seq, -60, false, now)
+            now += 1_000
+        }
+        assertTrue(!r.is1mHealthPoor(now))
+
+        // If neighbor drops below 50% PDR, 1M health is poor
+        now += 10_000 // neighbor aged out
+        r.links.onFrame(99, 100, -90, false, now)
+        // 2100 ms later: neighbor was heard 2.1s ago (active within 10s), but 0 frames in last 2s window (pdr = 0.0 < 0.5)
+        assertTrue(r.is1mHealthPoor(now + 2_100))
     }
 
     @Test fun predictorLearnsAndRoundTrips() {
