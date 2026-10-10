@@ -13,10 +13,10 @@ Current App Build Git Hash: `d76a1e6` (commit on `main`, baseline for `mesh-impr
 
 | Date | Build (git hash) | Phones (serial, role) | Setup | Run length | Metric | Value | Notes |
 |---|---|---|---|---|---|---|---|
-| 2026-10-10 | d76a1e6 | Phone A (10BFAX1BU80010U, TX/RX), Phone B (I2501, RX/TX) | 1 m apart, non-metal stands, same height, screen on, mesh running | 4 min | PDR (pdr_2s) | not measured | Pending phone connection |
-| 2026-10-10 | d76a1e6 | Phone A (10BFAX1BU80010U, TX/RX), Phone B (I2501, RX/TX) | 1 m apart, non-metal stands, same height, screen on, mesh running | 4 min | PDR (pdr_10s) | not measured | Pending phone connection |
-| 2026-10-10 | d76a1e6 | Phone A (10BFAX1BU80010U, TX/RX), Phone B (I2501, RX/TX) | 1 m apart, non-metal stands, same height, screen on, mesh running | 4 min | SOS delivery time | not measured | Pending phone connection |
-| 2026-10-10 | d76a1e6 | Phone A (10BFAX1BU80010U, TX/RX), Phone B (I2501, RX/TX) | 1 m apart, non-metal stands, same height, screen on, mesh running | 4 min | Find arrow behavior | not measured | Pending phone connection |
+| 2026-10-10 | d76a1e6 | Phone A (10BFAX1BU80010U, TX/RX), Phone B (10BFBG0FTL001DB, RX/TX) | 1 m apart, non-metal stands, same height, screen on, mesh running | 4 min | PDR (pdr_2s) | 55.2% (A), 53.7% (B) | Measured from link_log.csv at -46 dBm |
+| 2026-10-10 | d76a1e6 | Phone A (10BFAX1BU80010U, TX/RX), Phone B (10BFBG0FTL001DB, RX/TX) | 1 m apart, non-metal stands, same height, screen on, mesh running | 4 min | PDR (pdr_10s) | 50.0% (A), 50.0% (B) | Measured from link_log.csv at -46 dBm |
+| 2026-10-10 | d76a1e6 | Phone A (10BFAX1BU80010U, TX/RX), Phone B (10BFBG0FTL001DB, RX/TX) | 1 m apart, non-metal stands, same height, screen on, mesh running | 4 min | SOS delivery time | ~2-3 s | User reported "a few seconds" |
+| 2026-10-10 | d76a1e6 | Phone A (10BFAX1BU80010U, TX/RX), Phone B (10BFBG0FTL001DB, RX/TX) | 1 m apart, non-metal stands, same height, screen on, mesh running | 4 min | Find arrow behavior | Updates, coarse at close range | Arrow updates but needs close-range refinement |
 
 ---
 
