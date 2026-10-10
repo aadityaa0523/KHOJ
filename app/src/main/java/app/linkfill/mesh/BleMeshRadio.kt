@@ -37,35 +37,41 @@ class BleMeshRadio(
     val gatt = GattBearer(context, onGattFrame, ::log)
     private val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
 
+    enum class AdvSets { M1, M1_AND_CODED, CODED }
+
     val bluetoothOn get() = adapter?.isEnabled == true
     val extendedSupported get() = adapter?.isLeExtendedAdvertisingSupported == true
     val codedSupported get() = adapter?.isLeCodedPhySupported == true
     val maxAdvertisingBytes get() = adapter?.leMaximumAdvertisingDataLength ?: 31
 
     /** One running advertising set per PHY. */
-    private inner class Advertiser(val phy: Int) : AdvertisingSetCallback() {
+    private inner class Advertiser(val phy: Int, val legacy: Boolean = false) : AdvertisingSetCallback() {
         var set: AdvertisingSet? = null
         var txPowerDbm: Int? = null
+        var currentSeq: Long = 0L
 
         override fun onAdvertisingSetStarted(advertisingSet: AdvertisingSet?, txPower: Int, status: Int) {
             if (status == ADVERTISE_SUCCESS) { set = advertisingSet; txPowerDbm = txPower }
             else { advertiseErrors++; onError("Could not start ${phyName(phy)} advertising (code $status).") }
         }
 
-        override fun onAdvertisingDataSet(advertisingSet: AdvertisingSet?, status: Int) { if (status != ADVERTISE_SUCCESS) advertiseErrors++ }
+        override fun onAdvertisingDataSet(advertisingSet: AdvertisingSet?, status: Int) {
+            RadioLog.logTxDone(android.os.SystemClock.elapsedRealtimeNanos(), phy, status, currentSeq)
+            if (status != ADVERTISE_SUCCESS) advertiseErrors++
+        }
 
         override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet?) { if (advertisingSet == set) set = null }
 
         fun start() {
             val adv = adapter?.bluetoothLeAdvertiser ?: return onError("Bluetooth advertiser unavailable.")
             val params = AdvertisingSetParameters.Builder()
-                .setLegacyMode(false)
+                .setLegacyMode(legacy)
                 .setConnectable(false)
                 .setScannable(false)
                 .setInterval(if (slow) AdvertisingSetParameters.INTERVAL_HIGH else AdvertisingSetParameters.INTERVAL_LOW) // about every 1 s or 100 ms
                 .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MAX)
-                .setPrimaryPhy(phy)
-                .setSecondaryPhy(phy)
+                .setPrimaryPhy(if (legacy) BluetoothDevice.PHY_LE_1M else phy)
+                .setSecondaryPhy(if (legacy) BluetoothDevice.PHY_LE_1M else phy)
                 .build()
             adv.startAdvertisingSet(params, data(ByteArray(0)), null, null, null, this)
         }
@@ -78,6 +84,7 @@ class BleMeshRadio(
 
     private val advertisers = ArrayList<Advertiser>()
     private var slow = false
+    private var legacyMode = false
 
     /** Low-power member: advertise about once a second instead of ten times (restarts the running sets). */
     fun setSlowAdvertising(on: Boolean) {
@@ -98,13 +105,20 @@ class BleMeshRadio(
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            val arrivalNs = android.os.SystemClock.elapsedRealtimeNanos()
             val record = result.scanRecord ?: return
-            record.getServiceData(SERVICE)?.let { return onFrame(it, result.rssi, result.primaryPhy == BluetoothDevice.PHY_LE_CODED) }
+            record.getServiceData(SERVICE)?.let {
+                RadioLog.logRx(result, arrivalNs, it)
+                return onFrame(it, result.rssi, result.primaryPhy == BluetoothDevice.PHY_LE_CODED)
+            }
             if (record.serviceUuids?.contains(GattBearer.SERVICE) == true)
                 gatt.onDoorSeen(result.device, result.rssi, record.getManufacturerSpecificData(GattBearer.MANUFACTURER), result.isConnectable)
         }
 
-        override fun onScanFailed(errorCode: Int) = onError("Bluetooth scanning failed (code $errorCode).")
+        override fun onScanFailed(errorCode: Int) {
+            RadioLog.logScanFail(android.os.SystemClock.elapsedRealtimeNanos(), errorCode)
+            onError("Bluetooth scanning failed (code $errorCode).")
+        }
     }
 
     var lowLatencyScan = true
@@ -121,14 +135,16 @@ class BleMeshRadio(
         try { scanner.stopScan(scanCallback) } catch (_: IllegalStateException) { return }
         lowLatencyScan = want
         lastScanSwitchMs = now
-        scanner.startScan(scanFilters(), scanSettings(), scanCallback)
+        RadioLog.logScanStart(android.os.SystemClock.elapsedRealtimeNanos(), if (want) "LOW_LATENCY" else "BALANCED")
+        scanner.startScan(scanFilters(), scanSettings(legacyMode), scanCallback)
     }
 
-    private fun scanSettings() = ScanSettings.Builder()
+    private fun scanSettings(legacy: Boolean = false) = ScanSettings.Builder()
         .setScanMode(if (lowLatencyScan) ScanSettings.SCAN_MODE_LOW_LATENCY else ScanSettings.SCAN_MODE_BALANCED)
-        .setLegacy(!extendedSupported) // asking for extended reports on a phone without them makes the scan fail
-        .setPhy(if (extendedSupported) ScanSettings.PHY_LE_ALL_SUPPORTED else BluetoothDevice.PHY_LE_1M)
+        .setLegacy(legacy || !extendedSupported) // asking for extended reports on a phone without them makes the scan fail
+        .setPhy(if (extendedSupported && !legacy) ScanSettings.PHY_LE_ALL_SUPPORTED else BluetoothDevice.PHY_LE_1M)
         .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+        .setReportDelay(0)
         .build()
 
     // A filter is required for scanning to continue with the screen off; these are offloaded to the controller.
@@ -138,32 +154,55 @@ class BleMeshRadio(
     )
 
     /**
-     * Returns an error message instead of starting when this phone cannot run the mesh. Without extended advertising
-     * (older phones) it still joins: frames go over GATT links only.
+     * Starts the radio. Can be configured for tx-only, rx-only, specific PHY sets, or legacy advertising for bench testing.
+     * Defaults maintain existing behavior (advertise on 1M + Coded when supported, scan on all supported PHYs).
      */
-    fun start(nodeId: Int): String? {
+    fun start(
+        nodeId: Int,
+        advertise: Boolean = true,
+        scan: Boolean = true,
+        advSets: AdvSets = AdvSets.M1_AND_CODED,
+        legacy: Boolean = false,
+    ): String? {
         val a = adapter ?: return "This phone has no Bluetooth."
         if (!a.isEnabled) return "Bluetooth is off. Turn it on to join the mesh."
         advertisers.clear()
-        if (extendedSupported) {
-            advertisers += Advertiser(BluetoothDevice.PHY_LE_1M)
-            if (codedSupported) advertisers += Advertiser(BluetoothDevice.PHY_LE_CODED)
+        legacyMode = legacy
+        if (advertise && (extendedSupported || legacy)) {
+            val want1m = advSets == AdvSets.M1 || advSets == AdvSets.M1_AND_CODED
+            val wantCoded = (advSets == AdvSets.CODED || advSets == AdvSets.M1_AND_CODED) && codedSupported && !legacy
+            if (want1m) advertisers += Advertiser(BluetoothDevice.PHY_LE_1M, legacy)
+            if (wantCoded) advertisers += Advertiser(BluetoothDevice.PHY_LE_CODED, false)
             advertisers.forEach { it.start() }
         }
         gatt.start(nodeId, meshCapable = extendedSupported)?.let { if (!extendedSupported) return it else log(it) }
         lowLatencyScan = true
         running = true
-        a.bluetoothLeScanner?.startScan(scanFilters(), scanSettings(), scanCallback) ?: return "Bluetooth scanner unavailable."
+        RadioLog.activeAdvSetsProvider = { advertisers.count { it.set != null } }
+        if (scan) {
+            RadioLog.logScanStart(android.os.SystemClock.elapsedRealtimeNanos(), if (lowLatencyScan) "LOW_LATENCY" else "BALANCED")
+            a.bluetoothLeScanner?.startScan(scanFilters(), scanSettings(legacy), scanCallback) ?: return "Bluetooth scanner unavailable."
+        }
         return null
     }
 
     private var running = false
 
     /** Puts [frame] on the air on every running PHY until the next call. */
-    fun send(frame: ByteArray) {
+    fun send(frame: ByteArray, seq: Long? = null) {
+        val payloadSeq = seq ?: RadioLog.parseSeq(frame)
+        val hash = RadioLog.hash8(frame)
         val d = data(frame)
         var sent = false
-        for (a in advertisers) a.set?.let { it.setAdvertisingData(d); sent = true }
+        val nowNs = android.os.SystemClock.elapsedRealtimeNanos()
+        for (a in advertisers) {
+            a.set?.let {
+                a.currentSeq = payloadSeq
+                RadioLog.logTxUpdate(nowNs, a.phy, payloadSeq, frame.size, hash)
+                it.setAdvertisingData(d)
+                sent = true
+            }
+        }
         if (sent) framesSent++
         // Link-measurement filler only makes sense on the broadcast radio; GATT links carry real packets.
         if (frame.size > 2 && frame[2].toInt() != app.linkfill.core.mesh.MeshType.NEIGHBOR.code) gatt.send(frame)
@@ -174,7 +213,10 @@ class BleMeshRadio(
         gatt.stop()
         advertisers.forEach { it.stop() }
         advertisers.clear()
-        try { adapter?.bluetoothLeScanner?.stopScan(scanCallback) } catch (_: IllegalStateException) { }
+        try {
+            RadioLog.logScanStop(android.os.SystemClock.elapsedRealtimeNanos())
+            adapter?.bluetoothLeScanner?.stopScan(scanCallback)
+        } catch (_: IllegalStateException) { }
     }
 
     /** One-line capability report, logged at start so every test phone documents what it can do. */

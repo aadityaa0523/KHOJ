@@ -3,5 +3,7 @@
     <application>
         <!-- Debug builds only: renders the Find screen with SIMULATED data to check layouts. Never in a release build. -->
         <activity android:name="app.linkfill.FindPreviewActivity" android:exported="true" />
+        <!-- Isolated radio bench harness for Phase 1 and 2 diagnostic experiments -->
+        <activity android:name="app.linkfill.BenchActivity" android:exported="true" />
     </application>
 </manifest>
