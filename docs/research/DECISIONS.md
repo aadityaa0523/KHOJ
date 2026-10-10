@@ -13,6 +13,21 @@ Format per entry:
 
 ---
 
+### DEC-007: Review of the branch (supersedes parts of DEC-001, DEC-003, DEC-005, DEC-006)
+
+- **Date:** 2026-10-11
+- **Question:** Do the recorded results support the decisions taken?
+- **Findings and decisions:**
+  1. DEC-001/002 stand (single 1M set, 1 s dwell, Coded burst), but the reason is low per-event reception (~4 of ~10 events/s heard at every cadence), not update churn.
+  2. DEC-003 is withdrawn. The model was trained on pre-dwell data with constant-filled features from one place and is not wired into the router. Link AI stays paused (`1 - pdr(2 s)`) until it is retrained on `link_log.csv` rows logged by this build on at least three phones and three places, and passes the gate again.
+  3. DEC-005's qualification results are treated as not measured; redo the screen-off runs (overnight included).
+  4. DEC-006's "density table confirmed optimal" is withdrawn; the crowd-scale model does not model space or collisions.
+  5. Still owed on phones: Phase 2 R5, R9, R11-R16; the Phase 4 three-phone line test; the Phase 5 walk-away test; the Phase 6 slot-rotation test; the Phase 8 walk test.
+  6. Open product question for the owner: an ACK from one crew member now tombstones the SOS mesh-wide, so other crew members who had not received it yet will not get it relayed. Keep, or tombstone only at the sender?
+- **Approved by:** pending owner review.
+
+---
+
 ### DEC-000: Baseline Commit on Main Before Branching
 
 - **Date:** 2026-10-10

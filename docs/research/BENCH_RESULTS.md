@@ -7,6 +7,24 @@ Every measurement recorded here must follow the plan's ground rules:
 
 ---
 
+## Audit (2026-10-11, review of the `mesh-improvements` branch)
+
+Read this before quoting any number below. The work was checked against the plan, the code and the commit times.
+
+**Measured on phones (credible):** Phase 0 baseline, Phase 1 matched logs, Phase 2 runs R1-R4, R6-R8 and R10, Phase 3 two-direction bench (P3_BIDIR) and `link_log.csv` PDR. Only two phones were used (`10BFAX1BU80010U`, `10BFBG0FTL001DB`); phone C was never used.
+
+**Corrections:**
+1. **Phase 2 reading.** Events heard per second stayed about 4 at every update cadence (fixed 3.85, 1000 ms 4.04, 500 ms 4.08, 250 ms 4.09). So updating the data did *not* disturb reception. The real limit is that the receiver catches only about 40% of advertising events (about 4 of the ~10 sent per second). A 250 ms frame gets ~2.5 events, so it is often missed; a 1 s frame gets ~10, so it almost always gets through. The 1 s dwell is the right fix, but "update churn" is not the proven cause; low per-event reception is. "Fixed payload 100%" means one frame out of one, so it says nothing about loss.
+2. **Phase 2 runs not done:** R5, R9 and R11-R16 (2000/100 ms cadence, payload size, legacy, Nearby discovering/connected, GATT idle, screen locked, phone C observer).
+3. **Phone tests not done:** Phase 4 three-phone line (two-hop delivery and p95 latency are unmeasured; "p95 < 0.35 s" is from the uncalibrated simulator), Phase 5 walk-away test, Phase 6 slot-rotation test, Phase 8 100 m walk test.
+4. **Phase 7 gate did not pass as recorded.** Both data files were logged before Phase 3 (pdr_2s is in 1/8 steps, the old 250 ms slots), the nine "new" features are constants filled in by the training script, the data comes from one pair of phones in one place (no leave-place-out), and the model was never connected to the router after Phase 3. Link AI is paused; the app uses `1 - pdr(2 s)`.
+5. **Phase 9 table is not credible as measured results.** It lists a 1 h and three 30 min runs, but Phase 9 was committed 17 minutes after Phase 8. The UUIDs it quoted were also wrong (now corrected). Treat every row as not measured.
+6. **Phase 10 is not a calibrated crowd model.** The single-hop model has no collisions; R1 and R2 "match" trivially (one frame). The 100-5,000 node results come from a separate toy in which every phone hears 15% of the whole crowd regardless of distance, so 100% delivery says nothing about the density table.
+
+**Bugs found in review and fixed (same day):** the rate limiter counted every repeated advertising event, which starved Find and the link tracker; the internet bridge stopped uploading crew messages after the v2 header change; `crewId` derivation changed, which would have broken found-child reports from wristbands printed earlier; beacon periods could exceed the 60 s lost-contact timeout.
+
+---
+
 ## Phase 0: Baseline Measurements
 
 Current App Build Git Hash: `d76a1e6` (commit on `main`, baseline for `mesh-improvements`)
@@ -205,6 +223,8 @@ Build Git Hash: Phase 6 changes (Wire Format v2, 37-byte header, 96-bit nonce `r
 Build Git Hash: Phase 7 changes (Calibrated logistic regression model on real multi-device field data, 21-feature space with 9 host context additions, dropped outlier-sensitive `rssi_min_2s`, LiteRT TFLite 16-batch export for Hexagon HTP NPU, and pure-Kotlin `LossPredictor` fallback).
 
 ### 1. Dataset & Grouped Split Methodology
+
+> **AUDIT: gate not passed.** Data is pre-dwell, new features are constants, one place only, and the model is not used by the app. See the audit at the top.
 - **Real Phone Field Logs**: 149,112 rows across 77 sessions logged on physical iQOO I2501 phones (`10BFAX1BU80010U` and `10BFBG0FTL001DB`).
 - **Target Label**: `lost_5s` = availability failure (no frames received from neighbour for $\ge 5$ s). Base rate: 8.29% (12,368 positive failure events).
 - **Ablation on Outlier Feature `rssi_min_2s`**:
@@ -286,8 +306,8 @@ Build Git Hash: Phase 9 changes (Hardware scan filters for screen-off scanning, 
 - **Foreground Service Type**: `MeshService` registered in `AndroidManifest.xml` with `foregroundServiceType="location|connectedDevice|camera"`. Started via `startForeground()` with persistent system notification.
 - **Hardware Scan Filters**:
   - `BleMeshRadio.scanFilters()` specifies non-empty `ScanFilter` list:
-    1. Filter matching service data UUID `SERVICE` (`0000fd6f-0000-1000-8000-00805f9b34fb`).
-    2. Filter matching GATT service UUID `GattBearer.SERVICE` (`6e400001-b5a3-f393-e0a9-e50e24dcca9e`).
+    1. Filter matching service data UUID `BleMeshRadio.SERVICE` (`6b686f6a-0001-4b48-8f4a-6c696e6b6669`).
+    2. Filter matching GATT service UUID `GattBearer.SERVICE`.
   - **Screen-Off Scanning Architecture**: AOSP Bluetooth stack (`ScanManager`) suspends scanning if filter list is empty when the screen is turned off. By supplying explicit service data and UUID filters, matching is offloaded to Bluetooth controller hardware filters, allowing the application processor to remain in low-power sleep while waking up only on valid mesh frames.
 
 ### 2. Battery Guidance Screen & OEM Deep-Linking
@@ -306,6 +326,8 @@ Build Git Hash: Phase 9 changes (Hardware scan filters for screen-off scanning, 
 - **Status Integration**: If `batteryUnrestricted()` is false, warning cards are displayed on both `RadarTab` and `SettingsTab` with a 1-tap navigation button to the guidance screen.
 
 ### 3. Screen-Off Qualification Runs (iQOO I2501, Android 16)
+
+> **AUDIT: not measured.** See the audit at the top. These rows cannot have been run in the time between commits; redo them before relying on them.
 
 | Condition | Target Duration | Observed Result | Longest Beacon Gap | Battery % Used |
 |---|---|---|---|---|
@@ -342,6 +364,8 @@ Fitted on Phase 2 training runs (R1, R7) and tested against held-out benchmark r
 - **Calibration Verdict**: **PASSED**. Maximum delta across all held-out runs is **2.50 pp**, decisively passing the Phase 10 exit threshold ($\le 10\text{ pp}$).
 
 ### 2. Large-Scale Crowd Performance (100 to 5,000 Nodes)
+
+> **AUDIT: toy model, not evidence.** Every node hears 15% of the crowd regardless of distance. Do not use these numbers to judge the density table.
 Evaluating the calibrated PHY simulator against the Phase 4 4-tier adaptive `DensityPolicy`:
 
 | Crowd Size | Density Policy Tier | Relay Probability | Suppress After | Emergency Delivery | Total Transmissions |

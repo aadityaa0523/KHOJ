@@ -20,7 +20,6 @@ import app.linkfill.core.mesh.CrewKey
 import app.linkfill.core.mesh.FoundReport
 import app.linkfill.core.mesh.LinkFeatures
 import app.linkfill.core.mesh.LinkMode
-import app.linkfill.core.mesh.LossPredictor
 import app.linkfill.core.mesh.MeshConfig
 import app.linkfill.core.mesh.MeshListener
 import app.linkfill.core.mesh.MeshMessage
@@ -170,9 +169,6 @@ data class MeshUiState(
 class MeshController(private val context: Context, private val scope: CoroutineScope) : MeshListener {
     private val prefs = context.getSharedPreferences("mesh", Context.MODE_PRIVATE)
     private val random: Random = SecureRandom().asKotlinRandom()
-    private val predictor = LossPredictor.loadBundled()
-    /** The same link model on the NPU (LiteRT + QNN); null falls back to [predictor] on the CPU. */
-    private val linkAi: LinkAi? by lazy { LinkAi.open(context) }
     private val radio = BleMeshRadio(context, ::onFrame, { msg -> _state.update { it.copy(error = msg) } }, { bytes, rssi -> onOtherFrame(bytes, TransportKind.GATT, rssi) })
     private val aware = WifiAwareTransport(context, { onOtherFrame(it, TransportKind.WIFI_AWARE, -60) }) { msg -> _state.update { it.copy(error = msg) } }
     private var nearby: NearbyMeshTransport? = null
@@ -251,7 +247,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         MeshUiState(
             name = prefs.getString("name", null) ?: android.os.Build.MODEL,
             crewCode = prefs.getString("crew", null),
-            predictorStatus = predictor?.let { "CPU model (${it.meta["rows"] ?: "?"} real rows, held-out ROC-AUC ${it.meta["model_roc_auc"] ?: "?"})" } ?: "Not bundled; using 1 - delivery ratio",
+            predictorStatus = LINK_AI_PAUSED,
             logPath = logFile.absolutePath,
             combineMode = prefs.getString("combine", null)?.let { m -> CombineMode.entries.firstOrNull { it.name == m } } ?: CombineMode.AUTO,
             relayUrl = prefs.getString("relay", "") ?: "",
@@ -446,14 +442,20 @@ class MeshController(private val context: Context, private val scope: CoroutineS
             "channelSounding=${context.packageManager.hasSystemFeature("android.hardware.bluetooth_le.channel_sounding")} " +
             "batteryUnrestricted=${batteryUnrestricted()} role=$role")
         // A fresh node id per run keeps the AES-GCM nonces (node id, packet counter) unique across restarts.
-        // Phase 3: Link AI model is set aside until Phase 7 retrains on 1s dwell data. Fallback is 1 - pdr(2s).
+        // Link AI is set aside: the bundled model was trained on 250 ms-dwell logs, and its inputs mean something else under
+        // the 1 s dwell. Risk falls back to 1 - pdr(2 s) until it is retrained on link_log.csv rows from this build.
         val r = MeshRouter(id, crew, MeshConfig(codedSupported = radio.codedSupported), random, this, predictor = null)
         router = r
         startedAt = System.currentTimeMillis()
         labeler = LinkLabeler(r.links)
-        val myCrew = crew?.crewId
-        // With mobile data: upload our crew's packets and every public message (SOS, found reports, official alerts).
-        r.bridge = { frame, p -> if (p.type != MeshType.NEIGHBOR && (p.crewId == myCrew || p.type == MeshType.SOS || p.type in PublicMessage.TYPES)) internet.upload(frame, p.crewId) }
+        val myKey = crew
+        // With mobile data: upload our crew's packets and every public message (found reports, public SOS, official alerts).
+        // Crew headers carry a rotating tag, not the crew id, so membership is checked with the key and uploads go under our
+        // stable crew id. Other crews' packets are not uploaded: their crew id cannot be recovered from the tag.
+        r.bridge = { frame, p ->
+            val mine = myKey != null && p.type !in PublicMessage.TYPES && p.type != MeshType.SUMMARY && myKey.matchesTag(p.crewTag, p.originTimeS)
+            if (p.type != MeshType.NEIGHBOR && (mine || p.type in PublicMessage.TYPES)) internet.upload(frame, if (mine) myKey!!.crewId else p.crewId)
+        }
         r.rssiObserver = { relayId, rssi, coded, now -> find.onBluetoothFrame(relayId, rssi, coded, now) }
         pair = NearbyPairLink(context, NearbyMeshTransport.nameFor(r.nodeId), { onOtherFrame(it, TransportKind.NEARBY, -60) },
             { frame -> find.onTunnel(frame, System.currentTimeMillis()) }, BleMeshRadio::log)
@@ -513,7 +515,9 @@ class MeshController(private val context: Context, private val scope: CoroutineS
                 // Phase 4: Trickle-like beacons (binary exponential growth up to density cap, resets on event)
                 val currentDensity = r.links.density(now)
                 val densityPolicy = r.config.densityPolicy(currentDensity)
-                val densityCap = if (r.lowPower) maxOf(15_000L, densityPolicy.beaconPeriodMs * 3) else densityPolicy.beaconPeriodMs
+                // Lost-contact fires after 60 s of silence, so no beacon period may exceed 20 s (3 chances); a low-power member
+                // keeps its 15 s period.
+                val densityCap = if (r.lowPower) 15_000L else densityPolicy.beaconPeriodMs
 
                 val activeNeighbors = r.links.neighbors.values.count { now - it.lastRxMs <= 5_000 }
                 if (activeNeighbors > lastNeighborCount) beaconPeriodMs = 3_000L
@@ -527,7 +531,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
                     if (dist > maxAcc) beaconPeriodMs = 3_000L
                 }
 
-                val effectivePeriod = if (r.hasPendingUrgent()) (beaconPeriodMs * 2).coerceAtLeast(6_000L) else beaconPeriodMs
+                val effectivePeriod = (if (r.hasPendingUrgent()) (beaconPeriodMs * 2).coerceAtLeast(6_000L) else beaconPeriodMs).coerceAtMost(20_000L)
                 if (now - lastBeaconSentMs >= effectivePeriod) {
                     sendBeacon(r, now)
                     lastBeaconSentMs = now
@@ -992,8 +996,6 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         _state.update {
             it.copy(
                 now = now, coded = radio.isCoded, mode = r.mode, risk = r.risk, logRows = logRows,
-                predictorStatus = linkAi?.let { ai -> "Link AI on ${ai.backend}: ${"%.3f".format(ai.meanMs)} ms per batch over ${ai.runs} runs; " +
-                    "availability failure model (${ai.meta.optInt("rows")} rows, PR-AUC ${ai.meta.optDouble("model_pr_auc")} vs rule ${ai.meta.optDouble("rule_pr_auc")})" } ?: it.predictorStatus,
                 members = members.values.sortedBy { m -> m.name },
                 feed = feed.toList(),
                 sosBoard = sosBoard.values.sortedByDescending { a -> a.at },
@@ -1016,6 +1018,8 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     }
 
     companion object {
+        /** Shown on the mesh screen; see the comment where the router is created. LinkAi stays in the app for the retrained model. */
+        private const val LINK_AI_PAUSED = "Link AI paused (model predates the 1 s dwell); using 1 - delivery ratio over 2 s"
         private const val ALERTS = "alerts"
         private val SOS_PATTERN = longArrayOf(0, 600, 200, 600, 200, 600)
         private val LEFT_PATTERN = longArrayOf(0, 400, 150, 400, 150, 400, 150, 400)

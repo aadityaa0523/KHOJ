@@ -335,7 +335,7 @@ fun main(args: Array<String>) {
             ))
         }
         appendLine()
-        appendLine("**Validation Verdict**: **%s**. Every benchmark (including held-out runs R2, R8, R6) matches real hardware behavior within 10 percentage points. The simulator is officially validated.".format(
+        appendLine("**Validation Verdict**: **%s**. Single-hop delivery is within 10 percentage points on these runs. Limits: the single-hop model has no collisions, and R1/R2 are one frame each, so they match trivially. This is not validation for crowds.".format(
             if (allPassed) "PASSED" else "FAILED"
         ))
         appendLine()
@@ -368,7 +368,7 @@ fun main(args: Array<String>) {
         appendLine()
         appendLine("### Key Conclusions:")
         appendLine("1. **Confirmation of Phase 4 Density Table**: Under the validated event-level PHY model, the 4-tier density table holds emergency delivery above **99.5%** even at 5,000 nodes while capping transmissions via counter suppression (k <= 5) and probability gating.")
-        appendLine("2. **No Table Tuning Required**: Because delivery remains above 99.5% and transmissions scale sublinearly, the Phase 4 `DensityPolicy` table is confirmed optimal without requiring modification.")
+        appendLine("2. **Not evidence for the density table**: the crowd-scale model gives every node 15% of the whole crowd as neighbours, with no geometry and no PHY collisions, so its 100% delivery says nothing about the Phase 4 `DensityPolicy` table.")
     }
 
     outFile.parentFile?.mkdirs()

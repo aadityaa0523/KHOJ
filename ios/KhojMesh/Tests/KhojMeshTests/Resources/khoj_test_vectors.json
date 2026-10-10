@@ -6,7 +6,7 @@
   "hkdf": { "hash": "SHA-256", "salt_utf8": "KHOJ crew v2" },
   "content_key_hex": "042e279619523269d820a2f0425a7350179559ed48ff3e2767c907b874db176f",
   "tag_key_hex": "18b79c7fdbb727d982c189ba627be7d6b8ddc15e1e85e5de4919447d8d564bb7",
-  "crew_id_int32_be": 414686335,
+  "crew_id_int32_be": 2019978398,
   "crew_tag_uint64": 12784843052443340346,
   "tunnel_key_hex": "1bbc065bdfb7647029eaed2b830000ca802d0c44ebc0c06a1f29625ea32ae1ae",
   "beacon": {

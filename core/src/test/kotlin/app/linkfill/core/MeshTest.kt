@@ -705,6 +705,22 @@ class MeshTest {
         assertTrue("Rate limiter must drop excess frames (dropped=${r.stats.rateLimited})", r.stats.rateLimited >= 25)
     }
 
+    @Test fun repeatedCopiesOfOneFrameAreNotRateLimitedAndStillFeedFind() {
+        // With a 1 s dwell every advertising event repeats the same frame; 30 copies in 1.5 s is normal, not a flood.
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(), Random(1), object : MeshListener {})
+        var heard = 0
+        r.rssiObserver = { _, _, _, _ -> heard++ }
+        val filler = MeshPacket.encode(MeshPacket(MeshType.NEIGHBOR, 0, 0, 77, 5, 0L, 0, 77, 0, t0 / 1000, ByteArray(0)))
+        for (i in 0 until 30) r.onFrame(filler, -60, false, t0 + i * 50L)
+        assertEquals(0, r.stats.rateLimited)
+        assertEquals(30, heard)
+    }
+
+    @Test fun crewIdKeepsTheV1DerivationUsedByPrintedWristbands() {
+        assertEquals(2019978398, CrewKey.fromCode("ABCDEFGHJKLMNPQR")!!.crewId) // value from the v1 interop vectors
+    }
+
     @Test fun unauthenticatedForeignUrgentPacketsCappedAndRoutinePriority() {
         val myCrew = CrewKey.create()
         val otherCrew = CrewKey.create()

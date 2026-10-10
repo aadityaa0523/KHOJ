@@ -55,6 +55,8 @@ The deployed model is the full feature set on the 0.6 s loss target. It does not
 
 # Real-Data, Grouped Evaluation (Phase 7 Decision Gate)
 
+> **Audit 2026-10-11: gate not passed; model not in use.** Both data files predate the 1 s dwell (pdr_2s in 1/8 steps), the nine host features are constants imputed by the training script, all data is one phone pair in one place, and the router does not use the model. See DEC-007 in docs/research/DECISIONS.md.
+
 **Evaluation Date:** 2026-10-11  
 **Source Code:** `training/train_link_ai.py`  
 **Dataset Provenance:** 149,112 rows across 77 sessions recorded on real connected hardware (`10BFAX1BU80010U` and `10BFBG0FTL001DB`, iQOO I2501 devices) running the live mesh protocol across multiple test sessions.

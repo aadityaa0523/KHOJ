@@ -196,7 +196,7 @@ The crew shares one 16-character code, exchanged in person. It uses the alphabet
    - `content` (32 bytes): packet encryption key for AES-256-GCM.
    - `tag` (32 bytes): tag key for HMAC-SHA256 ephemeral crew tag generation.
    - `tunnel` (32 bytes): tunnel key for point-to-point payloads.
-4. Internal `crewId`: first 4 bytes of `tag` key read as Int32 big-endian (internal roster use only, never transmitted over the air).
+4. Stable `crewId`, derived exactly as in v1 so family wristbands printed earlier keep working: HKDF-SHA256 with salt `KHOJ crew v1`, info `crew`, 36 bytes; bytes 32 to 35 read as Int32 big-endian. It is never in crew packet headers (those carry the rotating tag); it appears in wristband QR codes, in found-child reports (public messages) and as the internet relay's crew bucket.
 
 ### 6.2 Ephemeral Rotating Crew Tag
 
@@ -214,7 +214,7 @@ To prevent cross-site physical tracking via static broadcast tags, `crewTag` rot
 
 Nonce safety: the nonce is partitioned into `(runEpoch, originId, packetId)`. Because `runEpoch` is randomly generated on every router startup and `originId` is random, nonces never collide even if packet counter resets to 1 after an app crash or restart. Repeats of an SOS or RALLY resend the original sealed packet byte for byte; they do not reseal it with a new time.
 
-Opening: find the frame's crewId; if it equals your crew's crewId, open with the same nonce and AAD built from the frame. A failed tag check means forged or corrupted: neither deliver nor relay it.
+Opening: if the frame's `crewTag` matches your crew's tag for slot t-1, t or t+1, open it with the same nonce and AAD built from the frame. A failed tag check means forged or corrupted: neither deliver nor relay it.
 
 ## 7. Message bodies
 
@@ -264,7 +264,7 @@ For every complete frame that arrives on any link:
 2. Ignore NEIGHBOR frames and frames whose `originId` is your own.
 3. **Duplicate check.** The packet key is `(originId, packetId)` taken as a 64-bit value. If you have seen the key, drop the frame. Otherwise remember it. Android remembers keys for 120 seconds, and keeps carried urgent packets "seen" for their whole life (600 seconds plus 60). Remember for at least 120 seconds.
 4. **Age.** Drop the packet if `now - originTimeS` is above 600 seconds or below -60 seconds (clock ahead of ours).
-5. **Deliver.** If the type is public, rate-limit to 5 packets per 10 seconds per originId, then decode and show it. If the crewId equals yours, open it; on a tag failure drop it and do not relay. If the crewId is someone else's, do not read it, but still relay it.
+5. **Deliver.** If the type is public, rate-limit to 5 packets per 10 seconds per originId, then decode and show it. If the `crewTag` matches your crew (section 6.2), open it; on a tag failure drop it and do not relay. If it is someone else's, do not read it, but still relay it.
 6. **Acknowledge.** After delivering an SOS or RALLY from your crew, originate an ACK for it (section 7.1). When you receive an ACK whose originId is yours, stop repeating that SOS or RALLY.
 7. **Relay.** If `ttl > 0`: build the same packet with `ttl - 1`, `hops + 1`, `relayId` = your node id, a fresh `linkSeq`, and send it on every link. Do not echo it back needlessly; if you do, the other side drops it as a duplicate. Android waits a random 40 to 290 ms before relaying (plus a signal-strength term) so the farthest phones go first; a short random delay is enough for a bearer link.
 8. If `ttl` is 0, deliver but do not relay.
@@ -296,11 +296,10 @@ Android sends every non-NEIGHBOR frame it puts on the air to every ready GATT li
 |---|---|
 | `crew_code` | the crew code used: `ABCDEFGHJKLMNPQR` |
 | `crew_secret_hex` | the 16 alphabet indices (`00 01 02 ... 0f`) |
-| `hkdf` | the HKDF parameters: SHA-256, salt text, info text, 68 bytes |
-| `okm_hex` | the full 68-byte HKDF output |
-| `packet_key_hex` | bytes 0 to 31 of the output |
-| `crew_id_int32_be` | bytes 32 to 35 as a signed integer |
-| `tunnel_key_hex` | bytes 36 to 67 |
+| `hkdf` | the HKDF parameters: SHA-256, salt `KHOJ crew v2` (section 6.1) |
+| `content_key_hex`, `tag_key_hex`, `tunnel_key_hex` | the three 32-byte subkeys (info `content`, `tag`, `tunnel`) |
+| `crew_id_int32_be` | the stable crew id (v1 derivation, section 6.1 item 4) |
+| `crew_tag_uint64` | the rotating tag for the beacon's slot |
 | `beacon.fields` | the header values of the example BEACON (type 1, ttl 6, hops 0, relayId and originId `0x11223344`, linkSeq 1, packetId 7, originTimeS 1790000000) |
 | `beacon.plaintext_hex` | the BEACON body before sealing: lat 25.3176, lon 82.9739, accuracy 12 m, battery 80, not findable, name `Asha` |
 | `beacon.aad_hex` | the 17 AAD bytes |

@@ -253,7 +253,7 @@ class MeshRouter(
     fun cancelRepeats(packetId: Int) {
         urgent.remove(packetId)
         val k = (nodeId.toLong() shl 32) or (packetId.toLong() and 0xFFFFFFFFL)
-        addTombstone(k, lastNow.coerceAtLeast(System.currentTimeMillis()))
+        addTombstone(k, lastNow) // time is passed in (see class doc), so the simulator's clock stays consistent
     }
 
     /** At most 5 public packets per 10 s from one sender, so one phone cannot flood volunteers' screens. */
@@ -271,11 +271,13 @@ class MeshRouter(
         val p = MeshPacket.decode(bytes) ?: run { stats.malformed++; return }
         stats.framesIn++
 
-        // Rate limits before decryption (Phase 6)
-        if (!globalBucket.tryConsume(now, ratePerSec = 50.0, capacity = 100.0)) {
-            stats.rateLimited++
-            return
-        }
+        // Every copy feeds the signal tracker: each frame goes out on 1M and LE Coded at once, and if the Coded copy is
+        // de-duplicated first, Find (which only trusts 1M RSSI) would starve.
+        if (via == TransportKind.BLE) rssiObserver?.invoke(p.relayId, rssi, coded, now)
+        if (via == TransportKind.BLE && !links.onFrame(p.relayId, p.linkSeq, rssi, coded, now)) { stats.repeatedFrames++; return }
+
+        // Rate limits count new link frames only: with a 1 s dwell every advertising event (up to ~10/s per phone, twice
+        // that during a Coded burst) repeats the same frame, and limiting those starved Find and the link tracker.
         val bucket = relayRateBuckets.getOrPut(p.relayId) { TokenBucket(20.0, now) }
         if (!bucket.tryConsume(now, ratePerSec = 10.0, capacity = 20.0)) {
             stats.rateLimited++
@@ -284,11 +286,6 @@ class MeshRouter(
         if (relayRateBuckets.size > 256) {
             relayRateBuckets.entries.removeIf { now - it.value.lastRefillMs > 10_000L }
         }
-
-        // Every copy feeds the signal tracker: each frame goes out on 1M and LE Coded at once, and if the Coded copy is
-        // de-duplicated first, Find (which only trusts 1M RSSI) would starve.
-        if (via == TransportKind.BLE) rssiObserver?.invoke(p.relayId, rssi, coded, now)
-        if (via == TransportKind.BLE && !links.onFrame(p.relayId, p.linkSeq, rssi, coded, now)) { stats.repeatedFrames++; return }
         if (p.type == MeshType.SUMMARY) {
             handleSummary(p, now)
             return
@@ -335,6 +332,8 @@ class MeshRouter(
             }
             listener.onPublic(p, m, p.hops, rssi, ageS)
         } else if (isMyCrew) {
+            // The global cap guards only the expensive step (decryption), so a crowd of strangers cannot starve relaying.
+            if (!globalBucket.tryConsume(now, ratePerSec = 50.0, capacity = 100.0)) { stats.rateLimited++; return }
             val plain = myCrew.open(p)
             if (plain == null) { stats.authFailed++; return } // forged or corrupted: neither delivered nor relayed
             MeshMessage.decode(p.type, plain)?.let { deliver(p, it, rssi, ageS, now) }

@@ -6,7 +6,7 @@ public struct CrewKey {
     public static let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
     public static let tagBytes = 16
 
-    /// Internal crew identifier for logging/roster.
+    /// Stable crew id for wristbands, found reports and the internet relay; not sent in crew packet headers.
     public let crewId: Int32
     public let tagKey: SymmetricKey
     let packetKey: SymmetricKey
@@ -26,8 +26,10 @@ public struct CrewKey {
         packetKey = contentOkm
         tagKey = tagOkm
         tunnelKey = tunnelOkm
-        let tagBytes = tagOkm.withUnsafeBytes { [UInt8]($0) }
-        crewId = Int32(bitPattern: tagBytes[0..<4].reduce(UInt32(0)) { $0 << 8 | UInt32($1) })
+        // Stable id printed into family wristband QR codes: derived exactly as in v1 so existing wristbands keep working.
+        let v1 = HKDF<SHA256>.deriveKey(inputKeyMaterial: ikm, salt: Array("KHOJ crew v1".utf8), info: Array("crew".utf8), outputByteCount: 36)
+        let v1Bytes = v1.withUnsafeBytes { [UInt8]($0) }
+        crewId = Int32(bitPattern: v1Bytes[32..<36].reduce(UInt32(0)) { $0 << 8 | UInt32($1) })
     }
 
     public func slotForTime(_ unixSeconds: UInt64) -> UInt64 {

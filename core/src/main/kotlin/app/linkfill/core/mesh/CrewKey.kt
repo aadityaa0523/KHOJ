@@ -20,7 +20,11 @@ class CrewKey private constructor(val code: String) {
     val tagKey: ByteArray // K_id for rotating tags
     /** Separate key for point-to-point tunnels (random nonces), so its nonce space never meets the packet nonces. */
     private val tunnelKey: SecretKeySpec
-    /** Internal crew identifier for logging/roster. */
+    /**
+     * Stable crew id: no longer sent in crew packet headers (they carry the rotating tag), but printed into family
+     * wristband QR codes, used by found-child reports and the internet relay. Derived exactly as in v1 so wristbands
+     * made before the v2 wire format keep working.
+     */
     val crewId: Int
 
     var slotDurationS: Long = 900L // 15 minutes, configurable for testing
@@ -32,18 +36,24 @@ class CrewKey private constructor(val code: String) {
         tagKey = SessionCrypto.hkdf(salt, secret, "tag".toByteArray(Charsets.UTF_8), 32)
         val tunnelOkm = SessionCrypto.hkdf(salt, secret, "tunnel".toByteArray(Charsets.UTF_8), 32)
         key = SecretKeySpec(contentOkm, "AES")
-        crewId = ByteBuffer.wrap(tagKey, 0, 4).int
+        val v1 = SessionCrypto.hkdf("KHOJ crew v1".toByteArray(), secret, "crew".toByteArray(), 36)
+        crewId = ByteBuffer.wrap(v1, 32, 4).int
         tunnelKey = SecretKeySpec(tunnelOkm, "AES")
     }
 
     fun slotForTime(unixSeconds: Long): Long = Math.floorDiv(unixSeconds, slotDurationS)
 
-    fun tagForSlot(slot: Long): Long {
-        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(tagKey, "HmacSHA256"))
-        val slotBytes = ByteBuffer.allocate(8).putLong(slot).array()
-        val hmac = mac.doFinal(slotBytes)
-        return ByteBuffer.wrap(hmac, 0, 8).long
+    /** Every crew frame from anyone is checked against up to three slots, so the few live tags are cached. */
+    private val tagCache = object : LinkedHashMap<Long, Long>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Long>?) = size > 8
+    }
+
+    fun tagForSlot(slot: Long): Long = synchronized(tagCache) {
+        tagCache.getOrPut(slot) {
+            val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+            mac.init(SecretKeySpec(tagKey, "HmacSHA256"))
+            ByteBuffer.wrap(mac.doFinal(ByteBuffer.allocate(8).putLong(slot).array()), 0, 8).long
+        }
     }
 
     fun tagForTime(unixSeconds: Long): Long = tagForSlot(slotForTime(unixSeconds))
