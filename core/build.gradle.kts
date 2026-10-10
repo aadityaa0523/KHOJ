@@ -51,6 +51,16 @@ tasks.register<JavaExec>("runCrowdRouting") {
     maxHeapSize = "3g"
 }
 
+// Phase 10: Run event-level calibrated simulator against real phone traces.
+tasks.register<JavaExec>("runCalibratedSim") {
+    group = "linkfill"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("app.linkfill.core.sim.BlePhyEventSimulatorKt")
+    args(rootProject.file("docs/research/MESH_SIM_RESULTS.md").absolutePath)
+    maxHeapSize = "3g"
+}
+
+
 // Create the authority (police) signing key: public half bundled in the app, private half + QR in secrets/.
 tasks.register<JavaExec>("makeAuthorityKey") {
     group = "linkfill"

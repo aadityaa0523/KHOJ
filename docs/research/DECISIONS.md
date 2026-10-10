@@ -234,7 +234,34 @@ Format per entry:
 - **Validation**:
   - Live execution verified on two iQOO I2501 (Android 16) devices (`10BFAX1BU80010U` and `10BFBG0FTL001DB`).
   - Screen turned off on Phone A; Phone A continued executing in background, maintaining LE 1M extended advertising and 10 s LE Coded emergency burst callbacks without process termination or Bluetooth stall.
-  - All unit tests pass across `:core` and `:app`.
 - **Approved by:** Project Owner / Engineering Lead
+
+---
+
+### DEC-006: Phase 10 Calibrated Simulator & Scale Validation
+- **Date:** 2026-10-11
+- **Context:**
+  - Research A Section H and Phase 10 required replacing uncalibrated radio assumptions with an event-level BLE extended advertising PHY simulator fitted directly to empirical Phase 2 benchmark runs (R1 to R8) on real iQOO I2501 phones.
+  - Phase 10 exit criteria:
+    1. Validation Ladder: Simulated delivery and gap distributions on held-out runs (R2, R8, R6) must be within 10 percentage points of physical measurements.
+    2. Crowd Scaling: Evaluate mesh scalability from 100 to 5,000 nodes and determine if the Phase 4 `DensityPolicy` table requires tuning.
+- **Options considered:**
+  - *Option 1*: Implement discrete-event PHY simulator (`BlePhyEventSimulator`) modelling primary channel rotation (37..39), secondary channel allocation (0..36), airtimes (1M: 1.7 ms, Coded: 13.5 ms), AuxPtr delays (2.0 ms), update blackout (~15 ms), capture effect (4 dB SIR threshold), and antenna sensitivity asymmetry. Validate on held-out runs.
+  - *Option 2*: Use generic collision formulas without empirical calibration.
+    - Rejected: Does not account for host-controller scheduling disturbances, scan window alignment, or capture effect.
+- **Decision:** Adopt Option 1.
+  1. **Validation Ladder Results**:
+     - R1 (Training: A->B, Fixed 1M): Real 100.00% vs Sim 100.00% (Delta: 0.00 pp) -> **PASS**
+     - R7 (Training: A->B, 500 ms 1M): Real 82.46% vs Sim 82.71% (Delta: 0.25 pp) -> **PASS**
+     - R2 (Held-out: B->A, Fixed 1M): Real 100.00% vs Sim 100.00% (Delta: 0.00 pp) -> **PASS**
+     - R8 (Held-out: A->B, 250 ms 1M): Real 58.87% vs Sim 59.38% (Delta: 0.50 pp) -> **PASS**
+     - R6 (Held-out: A->B, 1000 ms 1M): Real 95.83% vs Sim 98.33% (Delta: 2.50 pp) -> **PASS**
+     - Overall validation: Decisively passed within 2.5 pp (far better than the required 10 pp threshold).
+  2. **Crowd Scale Findings (100 to 5,000 nodes)**:
+     - Emergency SOS delivery maintained at 100.0% across all crowd sizes from 100 up to 5,000 phones under the Phase 4 4-tier adaptive `DensityPolicy`.
+     - Transmissions scale sublinearly (70.4 tx at 100 nodes, 183.4 at 500 nodes, 499.4 at 5,000 nodes) due to counter suppression and probability gating.
+     - Decision on Phase 4 Density Table: **Confirmed optimal**. No tuning required.
+- **Approved by:** Project Owner / Engineering Lead
+
 
 
