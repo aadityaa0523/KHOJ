@@ -97,6 +97,9 @@ class BleMeshRadio(
     var advertiseErrors = 0
         private set
 
+    /** True when at least one advertising set has started and is active. */
+    val isAdvertising get() = advertisers.any { it.set != null }
+
     /** True when frames are also going out on LE Coded. */
     val isCoded get() = advertisers.any { it.phy == BluetoothDevice.PHY_LE_CODED && it.set != null }
 

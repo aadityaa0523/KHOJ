@@ -145,6 +145,12 @@ class BenchActivity : ComponentActivity() {
         // TX transmission loop
         if (isTx && err == null) {
             txJob = lifecycleScope.launch {
+                // Wait for advertising set to start in controller
+                var waitedMs = 0
+                while (isActive && !r.isAdvertising && waitedMs < 4000) {
+                    delay(50)
+                    waitedMs += 50
+                }
                 var currentSeq = 0L
                 if (updateMsVal <= 0) {
                     // Fixed payload: send once and hold still
