@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=390">
+<title>KHOJ - Course Line</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#d9d6dc}
+body{width:390px;height:844px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#fff;color:#1C1B22;font:500 14px/1.2 Barlow,system-ui,sans-serif}
+.sb{height:40px;padding:0 22px;display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:14px}
+.bat{display:flex;align-items:center;gap:6px;font-size:12px}
+.bat i{width:22px;height:11px;border:1.5px solid #1C1B22;border-radius:3px;position:relative}
+.bat i:after{content:"";position:absolute;inset:1.5px 6px 1.5px 1.5px;background:#1C1B22;border-radius:1px}
+.top{height:44px;padding:0 16px;display:flex;align-items:center;justify-content:space-between}
+.logo{font:800 28px 'Barlow Condensed',sans-serif;letter-spacing:.12em}
+.logo span{color:#8E2DE2}
+.chip{height:30px;padding:0 12px 0 10px;display:flex;align-items:center;gap:7px;border:1px solid #1C1B22;border-radius:8px;font-size:12.5px;font-weight:600}
+.chip i{width:8px;height:8px;border-radius:50%;background:#8E2DE2}
+.map{display:block;border-top:1px solid #1C1B22;border-bottom:1px solid #1C1B22;background:#fff}
+.map text{font-family:Barlow,sans-serif;fill:#1C1B22}
+.ct{fill:none;stroke:#A98467;stroke-width:1;opacity:.34}
+.rg{fill:none;stroke:#A98467;stroke-width:.9;opacity:.55}
+.rl{font-size:8.5px;font-weight:600;fill:#7B5B3F!important;paint-order:stroke;stroke:#fff;stroke-width:3px;text-anchor:middle}
+.nl{font:700 12px 'Barlow Condensed',sans-serif!important;text-anchor:middle}
+.lb{font-size:13px;font-weight:700;paint-order:stroke;stroke:#fff;stroke-width:3.5px}
+.ls{font-size:11px;font-weight:500;paint-order:stroke;stroke:#fff;stroke-width:3px;fill:#4A4752!important}
+.card{margin:0 12px;border:1.5px solid #1C1B22}
+.ch,.cr{display:grid;grid-template-columns:30px 1fr 86px 62px;align-items:center}
+.ch{height:26px;background:#1C1B22;color:#fff;font:600 11.5px 'Barlow Condensed',sans-serif;letter-spacing:.1em;text-transform:uppercase}
+.ch>*{padding:0 8px}.ch b{justify-self:end;color:#E4C6FA}
+.cr{height:39px;border-top:1px solid #1C1B22;font-size:14px}
+.cr>*{padding:0 8px}
+.cr .n{font:700 17px 'Barlow Condensed',sans-serif;text-align:center;padding:0;height:100%;display:grid;place-items:center;border-right:1px solid #1C1B22}
+.cr strong{font-weight:700}.cr small{display:block;font-size:11px;font-weight:500;color:#4A4752;margin-top:1px}
+.cr .d{font-weight:700;text-align:right}.cr .t{text-align:right;font-size:13px;color:#4A4752}
+.sel{background:#F5EBFD}.sel .n{background:#8E2DE2;color:#fff}
+.warn{background:#FFF4D6}.warn .n{background:#F2A900;color:#1C1B22}.warn small{color:#8A5A00;font-weight:700}
+.lost{color:#77737F}.lost .n{background:#ECEBEE;color:#77737F}
+.sos{margin:auto 12px 12px;height:68px;border-radius:6px;background:#D7261E;color:#fff;display:flex;align-items:center;gap:14px;padding:0 16px;box-shadow:0 6px 16px rgba(215,38,30,.3)}
+.sos .ic{width:42px;height:42px;border-radius:50%;border:3px solid #fff;display:grid;place-items:center;font:800 13px Barlow,sans-serif;box-shadow:0 0 0 4px rgba(255,255,255,.22)}
+.sos h1{font:800 34px/1 'Barlow Condensed',sans-serif;letter-spacing:.06em}
+.sos p{font-size:12px;opacity:.92;margin-top:2px}
+.sos em{margin-left:auto;font:700 14px 'Barlow Condensed',sans-serif;font-style:normal;letter-spacing:.1em;border:1.5px solid #fff;border-radius:6px;padding:4px 8px}
+.nav{height:80px;background:#F7F2FA;display:flex;border-top:1px solid #E3DDE8}
+.nav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding-top:12px;font-size:12px;font-weight:600;color:#55515E}
+.nav u{width:60px;height:32px;border-radius:16px;display:grid;place-items:center;text-decoration:none;font-size:20px;line-height:1}
+.nav .on{color:#1C1B22;font-weight:700}.nav .on u{background:#EBD6FA}
+.rd{width:18px;height:18px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center}.rd:after{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pp{width:20px;height:18px;position:relative}.pp:before{content:"";position:absolute;left:6px;top:0;width:8px;height:8px;border-radius:50%;background:currentColor}.pp:after{content:"";position:absolute;left:2px;top:10px;width:16px;height:8px;border-radius:8px 8px 2px 2px;background:currentColor}
+</style></head><body>
+<div class="sb"><span>3:28</span><span class="bat">87%<i></i></span></div>
+<div class="top"><div class="logo">KHO<span>J</span></div><div class="chip"><i></i>Offline mesh on · 3 of 4 nearby</div></div>
+<svg class="map" width="390" height="372" viewBox="0 0 390 372">
+  <path class="ct" d="M0 70C70 40 140 95 215 55S345 25 390 62"/><path class="ct" d="M0 98C70 68 140 122 215 84S345 56 390 92"/>
+  <path class="ct" d="M0 292C60 270 120 318 200 300S330 262 390 296"/><path class="ct" d="M0 318C60 296 120 342 200 326S330 290 390 320"/>
+  <path class="ct" d="M300 150C330 170 360 190 390 182M310 130C340 150 366 172 390 164"/>
+  <circle class="rg" cx="195" cy="172" r="47"/><circle class="rg" cx="195" cy="172" r="75"/><circle class="rg" cx="195" cy="172" r="150"/>
+  <circle cx="195" cy="172" r="106" fill="rgba(142,45,226,.035)" stroke="#7B5B3F" stroke-width="1.5" stroke-dasharray="6 3"/>
+  <text class="rl" x="195" y="128">10</text><text class="rl" x="195" y="100">25</text><text class="rl" x="195" y="69" style="font-size:9.5px">50 m GROUP CIRCLE</text><text class="rl" x="195" y="25">100 m</text>
+  <circle cx="300" cy="78" r="12" fill="none" stroke="#F2A900" stroke-width="3.2"/><circle cx="300" cy="78" r="2.5" fill="#F2A900"/>
+  <text class="lb" x="318" y="74" style="fill:#1C1B22">Meet · Gate 4</text><text class="ls" x="318" y="87">88 m NE</text>
+  <line x1="203.5" y1="163.5" x2="223.3" y2="143.7" stroke="#8E2DE2" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="195" cy="172" r="12" fill="#fff" stroke="#8E2DE2" stroke-width="3"/><text class="nl" x="195" y="176.5">1</text>
+  <text class="lb" x="195" y="198" text-anchor="middle">YOU</text>
+  <circle cx="231.8" cy="135.2" r="12" fill="#8E2DE2"/><text class="nl" x="231.8" y="139.7" style="fill:#fff">2</text>
+  <text class="lb" x="249" y="136" style="fill:#8E2DE2" transform="translate(0 4)">Amma</text><text class="ls" x="249" y="152">12 m NE · 4 s</text>
+  <circle cx="103" cy="172" r="9.5" fill="#fff" stroke="#1C1B22" stroke-width="1.8"/><text class="nl" x="103" y="176" style="font-size:11px!important">3</text>
+  <text class="lb" x="103" y="150" text-anchor="middle">Ravi</text><text class="ls" x="103" y="196" text-anchor="middle">38 m W · 9 s</text>
+  <circle cx="195" cy="349" r="10" fill="#FFF4D6" stroke="#C77700" stroke-width="2"/><text class="nl" x="195" y="353" style="font-size:11px!important">4</text>
+  <text class="lb" x="212" y="347" style="fill:#8A5A00">Priya · 140 m S</text><text class="ls" x="212" y="361" style="fill:#8A5A00!important;font-weight:700">&#9650; outside 50 m circle</text>
+  <circle cx="34" cy="40" r="9.5" fill="#fff" stroke="#77737F" stroke-width="1.6" stroke-dasharray="3 2.5"/><text class="nl" x="34" y="44" style="fill:#77737F;font-size:11px!important">5</text>
+  <text class="lb" x="50" y="38" style="fill:#77737F">Papa</text><text class="ls" x="50" y="51">no fix · 3 min</text>
+  <path d="M362 40V16M362 16l-5 9M362 16l5 9" stroke="#1C1B22" stroke-width="1.6" fill="none"/><text class="nl" x="362" y="56" style="font-size:12px!important">N</text>
+  <text class="ls" x="10" y="364" style="font-size:9.5px">Distance scale compressed (square root)</text>
+</svg>
+<div class="card" style="margin-top:12px">
+  <div class="ch"><span>#</span><span>Control card</span><span>Dist / dir</span><b>Heard</b></div>
+  <div class="cr sel"><div class="n">2</div><div><strong>Amma</strong><small>Course target · selected</small></div><div class="d">12 m NE</div><div class="t">4 s</div></div>
+  <div class="cr"><div class="n">3</div><div><strong>Ravi</strong><small>Inside circle</small></div><div class="d">38 m W</div><div class="t">9 s</div></div>
+  <div class="cr warn"><div class="n">4</div><div><strong>Priya</strong><small>&#9650; Outside 50 m circle</small></div><div class="d">140 m S</div><div class="t">22 s</div></div>
+  <div class="cr lost"><div class="n">5</div><div><strong>Papa</strong><small>Lost contact · no direction</small></div><div class="d">&mdash;</div><div class="t">3 min</div></div>
+</div>
+<div class="sos"><div class="ic">SOS</div><div><h1>HOLD FOR SOS</h1><p>Hold 2 s to alert group and helpers</p></div><em>2 s</em></div>
+<nav class="nav">
+  <a class="on"><u><span class="rd"></span></u>Radar</a>
+  <a><u><span class="pp"></span></u>Group</a>
+  <a><u>✚</u>Helpers</a>
+  <a><u>&#9881;&#xFE0E;</u>Settings</a>
+</nav>
+</body></html>

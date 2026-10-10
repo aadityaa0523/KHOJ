@@ -15,6 +15,8 @@
     <!-- The shared location itself (and, on Android 10-12, Nearby discovery). -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Optional: lets Nearby and GPS keep working with the screen off (Android otherwise refuses them, error 8034). -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <!-- Keeps an active, user-started session alive with a visible notification and a Stop button. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -43,6 +45,8 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.LinkFill">
+        <!-- FastRPC to the Hexagon NPU: without it the QNN HTP backend cannot load its skel library (measured). -->
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

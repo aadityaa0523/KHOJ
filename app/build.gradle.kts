@@ -18,6 +18,17 @@ android {
 
     buildFeatures { compose = true }
 
+    androidResources { noCompress += "tflite" }
+
+    // QNN needs its Hexagon skel libraries extracted to nativeLibraryDir. Drop the backends and Hexagon versions an
+    // SM8850 (HTP V81) never loads, as Nadaka does on the same phone.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            excludes += listOf("QnnDsp*", "QnnGpu*", "QnnHtpV68*", "QnnHtpV69*", "QnnHtpV73*").map { "lib/arm64-v8a/lib$it.so" }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -42,5 +53,8 @@ dependencies {
     implementation(libs.camera.camera2)
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
+    implementation(libs.litert)
+    implementation(libs.qnn.litert.delegate)
+    implementation(libs.qnn.runtime)
     testImplementation(libs.junit)
 }

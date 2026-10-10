@@ -115,6 +115,33 @@ class GroupSafetyTest {
         for (bad in listOf(ByteArray(0), byteArrayOf(1), byteArrayOf(1, 0, 5), byteArrayOf(1, 0x21, 5))) assertNull(j.add(bad))
     }
 
+    @Test fun signalObserverSeesThe1mCopyEvenWhenTheCodedCopyArrivedFirst() {
+        val seen = mutableListOf<Boolean>()
+        val rx = MeshRouter(2, null, MeshConfig(), Random(2), Inbox()).apply { rssiObserver = { _, _, coded, _ -> seen += coded } }
+        val frame = MeshRouter(1, null, MeshConfig(), Random(1), Inbox()).nextFrame(t0)!!
+        rx.onFrame(frame, -60, coded = true, now = t0)
+        rx.onFrame(frame, -55, coded = false, now = t0 + 5)
+        assertEquals(listOf(true, false), seen)
+    }
+
+    @Test fun aBurstyButLiveSignalKeepsItsConfidenceThroughA2sGap() {
+        val tr = app.linkfill.core.find.RssiTracker()
+        for (i in 0 until 10) tr.add(t0 + i * 400L, -45)
+        val last = t0 + 9 * 400L
+        assertTrue(tr.snapshot(last + 1_900).confidence > 0.8)
+        assertTrue(tr.snapshot(last + 3_000).confidence in 0.2..0.8)
+        assertEquals(0.0, tr.snapshot(last + 4_100).confidence, 1e-9)
+    }
+
+    @Test fun bundledLinkModelLoadsAndRanksADyingLinkAboveAHealthyOne() {
+        val m = app.linkfill.core.mesh.LossPredictor.loadBundled()!!
+        assertTrue(m.meta["high_threshold"]!!.toDouble() > m.meta["medium_threshold"]!!.toDouble())
+        // LinkFeatures.ALL order: distance, rssi med, rssi min, std, slope, drop, pdr0.5, pdr2, pdr10, misses, since_last, coded, queue
+        val healthy = doubleArrayOf(0.0, -50.0, -53.0, 2.0, 0.0, 0.0, 0.8, 0.8, 0.8, 0.0, 0.2, 1.0, 0.0)
+        val dying = doubleArrayOf(0.0, -88.0, -95.0, 8.0, -2.0, 10.0, 0.0, 0.0, 0.05, 20.0, 4.5, 1.0, 0.0)
+        assertTrue(m.predict(dying) > m.predict(healthy))
+    }
+
     @Test fun lowPowerFlagIsLinkLevelOnly() {
         val p = MeshPacket(app.linkfill.core.mesh.MeshType.TEXT, 5, 0, 1, 1, 2, 3, 4, 5, byteArrayOf(1))
         val marked = MeshPacket.decode(MeshPacket.encode(p.onLink(9, 2, lowPower = true)))!!

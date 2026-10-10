@@ -67,6 +67,7 @@ class MeshTest {
             MeshMessage.Rally(25.3, 82.9, 1_800_000_000L, "Blue tent"),
             MeshMessage.Text("hello"),
             MeshMessage.Ack(5, 6),
+            MeshMessage.Looking(-123456),
         )) {
             val (type, bytes) = MeshMessage.encode(m)
             val back = MeshMessage.decode(type, bytes)

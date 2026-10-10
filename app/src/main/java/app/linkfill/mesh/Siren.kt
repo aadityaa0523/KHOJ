@@ -5,21 +5,66 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraAccessException
+import android.hardware.camera2.CameraManager
+import android.os.Handler
+import android.os.Looper
 import kotlin.math.PI
 import kotlin.math.sin
 
 /**
  * A loud rising-and-falling siren on the alarm stream, so people nearby can hear where the person in trouble is,
  * even when the phone is on silent. Alarm volume goes to maximum while it plays and is restored afterwards.
+ * The camera flash blinks the international SOS pattern (three short, three long, three short) with it, so the person
+ * can also be seen in the dark or a noisy crowd. Dots are 0.2 s on / 0.2 s off (2.5 Hz, under the 3 Hz that can trigger
+ * photosensitive seizures). The flash needs no camera permission and is skipped silently on phones without one, or when
+ * another app holds the camera.
  */
-class Siren(context: Context) {
+class Siren(private val context: Context) {
+    private val camera = context.getSystemService(CameraManager::class.java)
+    private val handler = Handler(Looper.getMainLooper())
+    private var flashing = false
+    private var step = 0
+    /** On/off durations in ms, starting with "on": S (dot dot dot), O (dash dash dash), S, then a pause before it repeats. */
+    private val morse = longArrayOf(200, 200, 200, 200, 200, 600, 600, 200, 600, 200, 600, 600, 200, 200, 200, 200, 200, 1500)
+
+    private val torchCamera: String? by lazy { findTorch() }
+    private fun torchId() = torchCamera
+
+    private fun findTorch(): String? = try {
+        camera?.cameraIdList?.firstOrNull { id -> camera.getCameraCharacteristics(id).let { it.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true && it.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK } }
+    } catch (_: CameraAccessException) { null }
+
+    private fun torch(id: String, on: Boolean) = try { camera?.setTorchMode(id, on); true } catch (_: CameraAccessException) { false } catch (_: IllegalArgumentException) { false }
+
+    private val blink = object : Runnable {
+        override fun run() {
+            if (!flashing) return
+            val id = torchId() ?: return
+            torch(id, step % 2 == 0) // even steps are "on"
+            val d = morse[step % morse.size]
+            step++
+            handler.postDelayed(this, d)
+        }
+    }
+
+    /** Starts the blinking alone (used by the debug preview to test the flash without sound or sending anything). */
+    fun startFlash() { if (flashing) return; flashing = true; step = 0; handler.post(blink) }
+
+    fun stopFlash() {
+        flashing = false; handler.removeCallbacks(blink)
+        torchId()?.let { torch(it, false) }
+    }
+
     private val audio = context.getSystemService(AudioManager::class.java)
     private var track: AudioTrack? = null
     private var savedVolume = -1
     val playing get() = track != null
 
-    fun start() {
-        if (track != null) return
+    fun start(sound: Boolean = true) {
+        startFlash()
+        if (!sound || track != null) return
         val rate = 22_050
         val pcm = ShortArray(rate * 2) // one 2 s wail: 650 Hz up to 1500 Hz and back
         var phase = 0.0
@@ -46,6 +91,7 @@ class Siren(context: Context) {
     }
 
     fun stop() {
+        stopFlash()
         val t = track ?: return
         track = null
         try { t.stop() } catch (_: IllegalStateException) { }

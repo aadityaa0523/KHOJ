@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>KHOJ - The Call</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Hind:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#12123A;--vio:#6C4CF5;--sky:#3FA9F5;--soft:#F4F2FF;--fire:#FF6A2B;--gold:#FFC23D;--mut:rgba(244,242,255,.64);--red:#FF4D5E;--line:rgba(255,255,255,.17)}
+*{box-sizing:border-box;margin:0}
+html{background:#05051c}
+body{width:390px;height:844px;overflow:hidden;position:relative;display:flex;flex-direction:column;color:var(--soft);font:500 14px/1.2 'Bricolage Grotesque',system-ui,sans-serif;background:radial-gradient(130% 55% at 50% -5%,#4a34c9,rgba(74,52,201,0) 62%),radial-gradient(90% 45% at 100% 45%,rgba(63,169,245,.22),transparent 70%),var(--ink)}
+/* status + header */
+.sb{height:30px;padding:9px 22px 0;display:flex;justify-content:space-between;font-size:13px;font-weight:700}
+.bat{display:inline-block;width:22px;height:11px;border:1.5px solid var(--soft);border-radius:3px;position:relative;vertical-align:-1px;margin-left:8px}
+.bat::after{content:"";position:absolute;inset:1px 5px 1px 1px;background:var(--soft);border-radius:1px}
+.hd{height:52px;padding:6px 16px 0;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:24px;font-weight:800;letter-spacing:.16em}
+.logo small{font:700 13px Hind,sans-serif;letter-spacing:0;color:var(--gold);margin-left:6px}
+.pill{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:99px;font-size:12px;background:rgba(255,255,255,.1);border:1px solid var(--line);backdrop-filter:blur(14px)}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--sky);box-shadow:0 0 0 3px rgba(63,169,245,.28),0 0 10px var(--sky)}
+/* radar panel */
+.rp{margin:2px 16px 0;flex:1;border-radius:24px;border:1px solid transparent;display:flex;flex-direction:column;overflow:hidden;backdrop-filter:blur(18px);box-shadow:0 12px 40px rgba(5,5,40,.55);background:linear-gradient(160deg,rgba(40,34,112,.84),rgba(20,20,68,.92)) padding-box,linear-gradient(140deg,rgba(255,194,61,.85),rgba(108,76,245,.7) 45%,rgba(63,169,245,.6)) border-box}
+.gw{padding:13px 15px 0;display:flex;justify-content:space-between;font-size:12.5px}
+.gw em{font-style:normal;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut);margin-right:4px}
+.gw b{font-weight:800}
+.cv{position:relative;flex:1}
+.cv::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,rgba(255,106,43,.36),rgba(108,76,245,.22) 32%,transparent 62%)}
+.a{position:absolute;left:50%;top:50%;width:calc(var(--r)*2px);height:calc(var(--r)*2px);transform:translate(-50%,-50%);border-radius:50%;border:2px solid rgba(var(--c),var(--o));-webkit-mask:conic-gradient(from var(--s),#000 0 95deg,transparent 95deg 112deg,#000 112deg 205deg,transparent 205deg 222deg,#000 222deg 360deg);mask:conic-gradient(from var(--s),#000 0 95deg,transparent 95deg 112deg,#000 112deg 205deg,transparent 205deg 222deg,#000 222deg 360deg)}
+.gc{position:absolute;left:50%;top:50%;width:216px;height:216px;transform:translate(-50%,-50%);border-radius:50%;border:1.5px dashed rgba(255,255,255,.5)}
+.gc span{position:absolute;top:-8px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:700;letter-spacing:.06em;background:#211e66;padding:1px 7px;border-radius:8px;color:var(--soft)}
+.me{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:radial-gradient(#fff,var(--gold) 55%,var(--fire));box-shadow:0 0 0 5px rgba(255,194,61,.25),0 0 30px 8px rgba(255,106,43,.7)}
+.me::after{content:"You";position:absolute;top:30px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:700;letter-spacing:.06em}
+.c{position:absolute;left:calc(50% + var(--x)*1px);top:calc(50% + var(--y)*1px);transform:translate(-50%,-50%);display:flex;align-items:center;gap:7px;padding:5px 12px 5px 5px;border-radius:99px;white-space:nowrap;font-weight:700;font-size:14px;line-height:1.1;background:rgba(var(--h),.26);border:1px solid rgba(var(--h),.95);backdrop-filter:blur(8px);box-shadow:0 0 var(--g) rgba(var(--h),.7),0 4px 14px rgba(0,0,0,.35)}
+.c i{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font:800 13px 'Bricolage Grotesque';font-style:normal;color:var(--ink);background:rgb(var(--h))}
+.c small{display:block;font-size:11px;font-weight:600;opacity:.88}
+.c.w{box-shadow:0 0 0 3px #1c1a58,0 0 0 5px var(--red),0 0 20px rgba(255,77,94,.55)}
+.ow{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:9px;font-size:10px;font-weight:800;letter-spacing:.03em;background:var(--red);color:#fff;padding:2px 8px;border-radius:8px}
+.c.z{border-style:dashed;background:rgba(255,255,255,.05);box-shadow:none;color:rgba(244,242,255,.6)}
+/* member rows */
+.ls{margin:8px 16px 0;display:flex;flex-direction:column;gap:5px}
+.m{height:40px;border-radius:12px;display:flex;align-items:center;gap:8px;padding-right:12px;overflow:hidden;background:rgba(255,255,255,.09);border:1px solid var(--line);backdrop-filter:blur(14px);box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.m::before{content:"";align-self:stretch;width:6px;background:rgb(var(--h));box-shadow:0 0 14px rgb(var(--h))}
+.m strong{width:52px;margin-left:4px;font-size:15px;font-weight:700}
+.m .d{flex:1;font-size:13px}.m .d b{display:inline-block;width:18px;color:rgb(var(--h));font-size:15px}
+.m .t{font-size:12px;color:var(--mut)}
+.m.w{border-color:rgba(255,77,94,.65)}.m.w .t{color:#ff9aa4}
+.m.z{opacity:.68}
+/* SOS dock */
+.dk{margin:8px 16px 0}
+.sos{height:72px;border-radius:36px;border:3px solid transparent;display:flex;align-items:center;gap:12px;padding:0 12px 0 8px;background:linear-gradient(100deg,#F2283C,#B30F2E) padding-box,conic-gradient(from 90deg,#FF6A2B,#FFC23D,#FF6A2B,#FF3B30,#FFC23D,#FF6A2B) border-box;box-shadow:0 0 0 5px rgba(255,80,40,.16),0 8px 30px rgba(255,60,40,.6)}
+.ic{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:14px;background:rgba(0,0,0,.25);border:3px solid rgba(255,255,255,.92)}
+.tx{flex:1}.tx b{display:block;font-size:22px;font-weight:800;letter-spacing:.1em;margin-bottom:3px}.tx span{font-size:11.5px;opacity:.9}
+.hs{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;border:2px dashed rgba(255,255,255,.7)}
+/* bottom nav */
+.nv{height:72px;margin-top:8px;padding-top:10px;display:flex;background:rgba(14,14,52,.94);border-top:1px solid var(--line);backdrop-filter:blur(20px)}
+.n{flex:1;text-align:center;font-size:12px;font-weight:600;color:var(--mut)}.n.on{color:var(--soft);font-weight:700}
+.pl{width:58px;height:30px;border-radius:15px;margin:0 auto 4px;display:grid;place-items:center}.on .pl{background:rgba(108,76,245,.6)}
+.i{width:24px;height:24px;display:block;position:relative}
+.i.r{background:radial-gradient(circle,currentColor 0 2.5px,transparent 3px 6px,currentColor 6.5px 8px,transparent 8.5px 10.5px,currentColor 11px 12px,transparent 12.5px)}
+.i.g::before{content:"";position:absolute;left:8px;top:2px;width:8px;height:8px;border-radius:50%;background:currentColor}
+.i.g::after{content:"";position:absolute;left:3px;top:12px;width:18px;height:9px;border-radius:9px 9px 3px 3px;background:currentColor}
+.i.h{display:grid;place-items:center;font-size:11px;border:2px solid currentColor;border-radius:50%}.i.h::before{content:"\271A"}
+.i.s::before{content:"\2699\FE0E";font-size:24px;line-height:24px}
+</style></head><body>
+<div class="sb"><span>3:28</span><span>&#5765; <i class="bat"></i></span></div>
+<div class="hd"><div class="logo">KHOJ<small>खोज</small></div><div class="pill"><i></i>Offline mesh on · 3 of 4 nearby</div></div>
+<section class="rp">
+  <div class="gw"><span><em>Nearest</em><b style="color:var(--gold)">Amma 12 m</b></span><span><em>Farthest</em><b style="color:var(--sky)">Priya 140 m</b></span></div>
+  <div class="cv">
+    <div class="a" style="--r:34;--c:255,194,61;--o:.8;--s:10deg"></div>
+    <div class="a" style="--r:62;--c:255,106,43;--o:.62;--s:70deg"></div>
+    <div class="a" style="--r:90;--c:150,120,255;--o:.5;--s:130deg"></div>
+    <div class="a" style="--r:118;--c:63,169,245;--o:.4;--s:190deg"></div>
+    <div class="a" style="--r:146;--c:63,169,245;--o:.26;--s:250deg"></div>
+    <div class="gc"><span>50 m circle</span></div>
+    <div class="me"></div>
+    <div class="c" style="--x:44;--y:-46;--h:255,138,45;--g:28px"><i>A</i><div>Amma<small>12 m NE</small></div></div>
+    <div class="c" style="--x:-96;--y:6;--h:140,112,255;--g:14px"><i>R</i><div>Ravi<small>38 m W</small></div></div>
+    <div class="c w" style="--x:0;--y:128;--h:63,169,245;--g:10px"><i>P</i><div>Priya<small>140 m S</small></div><span class="ow">outside circle</span></div>
+    <div class="c z" style="--x:108;--y:-120;--h:150,148,180"><i>P</i><div>Papa<small>3 min ago</small></div></div>
+  </div>
+</section>
+<div class="ls">
+  <div class="m" style="--h:255,138,45"><strong>Amma</strong><span class="d"><b>&#8599;</b>12 m NE</span><span class="t">seen 4 s ago</span></div>
+  <div class="m" style="--h:140,112,255"><strong>Ravi</strong><span class="d"><b>&#8592;</b>38 m W</span><span class="t">seen 9 s ago</span></div>
+  <div class="m w" style="--h:63,169,245"><strong>Priya</strong><span class="d"><b>&#8595;</b>140 m S · outside circle</span><span class="t">22 s ago</span></div>
+  <div class="m z" style="--h:150,148,180"><strong>Papa</strong><span class="d"><b>&#8212;</b>Lost contact</span><span class="t">3 min ago</span></div>
+</div>
+<div class="dk"><div class="sos"><div class="ic">SOS</div><div class="tx"><b>HOLD FOR SOS</b><span>Hold 2 seconds to alert group and helpers</span></div><div class="hs">2s</div></div></div>
+<nav class="nv">
+  <div class="n on"><div class="pl"><i class="i r"></i></div>Radar</div>
+  <div class="n"><div class="pl"><i class="i g"></i></div>Group</div>
+  <div class="n"><div class="pl"><i class="i h"></i></div>Helpers</div>
+  <div class="n"><div class="pl"><i class="i s"></i></div>Settings</div>
+</nav>
+</body></html>

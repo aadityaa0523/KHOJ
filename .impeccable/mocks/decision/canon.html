@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=390">
+<title>KHOJ - Category Standard</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#dfe3ea}
+body{width:390px;height:844px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:#FFFFFF;color:#1F1F1F;font:400 14px/1.3 Roboto,system-ui,sans-serif}
+.sb{height:40px;padding:0 22px;display:flex;align-items:center;justify-content:space-between;font-weight:500;font-size:14px}
+.bat{display:flex;align-items:center;gap:6px;font-size:12px}
+.bat i{width:22px;height:11px;border:1.5px solid #1F1F1F;border-radius:3px;position:relative}
+.bat i:after{content:"";position:absolute;inset:1.5px 6px 1.5px 1.5px;background:#1F1F1F;border-radius:1px}
+.bar{height:56px;padding:0 8px 0 20px;display:flex;align-items:center;justify-content:space-between}
+.bar h1{font:500 22px Roboto,sans-serif;letter-spacing:.02em}
+.bar h1 b{color:#1A73E8;font-weight:700}
+.ib{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;color:#444746;font-size:22px}
+.chips{padding:2px 16px 0;display:flex;gap:8px}
+.chip{height:32px;padding:0 12px 0 10px;border:1px solid #C4C7C5;border-radius:8px;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;color:#1F1F1F}
+.chip i{width:8px;height:8px;border-radius:50%;background:#1A73E8}
+.sum{margin:12px 16px 0;height:72px;border-radius:16px;background:#E8F0FE;display:flex;align-items:center;gap:14px;padding:0 16px}
+.mini{width:48px;height:48px;border-radius:50%;border:2px dashed #1A73E8;position:relative;flex:none}
+.mini i{position:absolute;width:7px;height:7px;border-radius:50%;background:#1A73E8}
+.mini i:nth-child(1){left:20px;top:20px;width:9px;height:9px;background:#0B57D0}.mini i:nth-child(2){left:30px;top:10px}.mini i:nth-child(3){left:8px;top:23px}
+.mini i:nth-child(4){left:20px;top:51px;background:#E37400}
+.sum b{display:block;font-size:15px;font-weight:500;color:#041E49}.sum span{font-size:12.5px;color:#444746}
+.lab{padding:16px 20px 8px;font-size:12px;font-weight:500;letter-spacing:.06em;color:#444746;text-transform:uppercase}
+.list{padding:0 16px;display:flex;flex-direction:column;gap:8px}
+.m{height:80px;border-radius:16px;border:1px solid #E1E3E1;background:#fff;display:flex;align-items:center;gap:14px;padding:0 14px}
+.av{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font-size:19px;font-weight:500;flex:none}
+.m .i{flex:1;min-width:0}
+.m h2{font:500 16px Roboto,sans-serif;display:flex;align-items:center;gap:8px}
+.m p{font-size:13px;color:#444746;margin-top:3px}
+.m p b{font-weight:500;color:#1F1F1F}
+.ar{width:40px;height:40px;border-radius:50%;background:#E8F0FE;color:#0B57D0;display:grid;place-items:center;font-size:20px;font-weight:700;flex:none}
+.tag{height:22px;padding:0 8px;border-radius:6px;font-size:11.5px;font-weight:500;display:inline-flex;align-items:center;gap:4px}
+.m.w{background:#FFF8E1;border-color:#F6D98B}
+.w .av{background:#FCE8B2;color:#7A4B00}.w .tag{background:#FCE8B2;color:#7A4B00}.w .ar{background:#FCE8B2;color:#7A4B00}
+.m.l{background:#F8F9FA}
+.l .av{background:#E1E3E1;color:#5F6368}.l h2{color:#5F6368}.l .tag{background:#E1E3E1;color:#444746}.l .ar{background:#E1E3E1;color:#80868B}
+.fab{margin:auto 16px 14px;height:64px;border-radius:20px;background:#D93025;color:#fff;display:flex;align-items:center;justify-content:center;gap:12px;font:500 19px Roboto,sans-serif;letter-spacing:.04em;box-shadow:0 1px 3px rgba(0,0,0,.3),0 6px 14px rgba(217,48,37,.35);position:relative}
+.fab .ic{width:32px;height:32px;border-radius:50%;border:2.5px solid #fff;display:grid;place-items:center;font-size:10.5px;font-weight:700;letter-spacing:0}
+.fab small{position:absolute;right:16px;font-size:12px;font-weight:500;opacity:.9;letter-spacing:.02em}
+.nav{height:80px;background:#F3F6FC;display:flex}
+.nav a{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding-top:12px;font-size:12px;font-weight:500;color:#444746}
+.nav u{width:64px;height:32px;border-radius:16px;display:grid;place-items:center;text-decoration:none;font-size:20px;line-height:1}
+.nav .on{color:#041E49;font-weight:700}.nav .on u{background:#D3E3FD}
+.rd{width:18px;height:18px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center}.rd:after{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pp{width:20px;height:18px;position:relative}.pp:before{content:"";position:absolute;left:6px;top:0;width:8px;height:8px;border-radius:50%;background:currentColor}.pp:after{content:"";position:absolute;left:2px;top:10px;width:16px;height:8px;border-radius:8px 8px 2px 2px;background:currentColor}
+</style></head><body>
+<div class="sb"><span>3:28</span><span class="bat">87%<i></i></span></div>
+<div class="bar"><h1><b>KHOJ</b></h1><div class="ib">&#9432;&#xFE0E;</div></div>
+<div class="chips"><div class="chip"><i></i>Offline mesh on · 3 of 4 nearby</div></div>
+<div class="sum"><div class="mini"><i></i><i></i><i></i><i></i></div><div><b>Group circle · 50 m</b><span>2 inside the circle · 1 outside · 1 lost</span></div></div>
+<div class="lab">Your group</div>
+<div class="list">
+  <div class="m"><div class="av" style="background:#D3E3FD;color:#0B57D0">A</div><div class="i"><h2>Amma</h2><p><b>12 m</b> · North-east · seen 4 s ago</p></div><div class="ar">&#8599;</div></div>
+  <div class="m"><div class="av" style="background:#C4EED0;color:#0D652D">R</div><div class="i"><h2>Ravi</h2><p><b>38 m</b> · West · seen 9 s ago</p></div><div class="ar">&#8592;</div></div>
+  <div class="m w"><div class="av">P</div><div class="i"><h2>Priya <span class="tag">&#9888;&#xFE0E; Outside circle</span></h2><p><b>140 m</b> · South · seen 22 s ago</p></div><div class="ar">&#8595;</div></div>
+  <div class="m l"><div class="av">P</div><div class="i"><h2>Papa <span class="tag">Lost contact</span></h2><p>Last seen 3 min ago · no direction</p></div><div class="ar">?</div></div>
+</div>
+<div class="fab"><span class="ic">SOS</span>HOLD FOR SOS<small>2 s</small></div>
+<nav class="nav">
+  <a class="on"><u><span class="rd"></span></u>Radar</a>
+  <a><u><span class="pp"></span></u>Group</a>
+  <a><u>✚</u>Helpers</a>
+  <a><u>&#9881;&#xFE0E;</u>Settings</a>
+</nav>
+</body></html>

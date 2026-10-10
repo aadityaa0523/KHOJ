@@ -177,22 +177,35 @@ class FindTest {
         assertEquals(Source.GPS, s.arrowSource)
     }
 
-    @Test fun gpsArrowIsWithheldWhenTooCloseOrInaccurate() {
+    @Test fun gpsArrowIsWithheldWhenTooCloseAndWideWhenInaccurate() {
+        // Too close for GPS to be sure: still an arrow (the compass word as an arrow), with a wedge saying how rough it is.
         val close = FindResolver.resolve(inputs(tgt = target(6.0)))
-        assertNull(close.arrowDeg); assertTrue(Note.GPS_TOO_CLOSE_FOR_DIRECTION in close.notes)
-        assertNull(FindResolver.resolve(inputs(tgt = target(30.0, acc = 25.0))).arrowDeg)
+        assertEquals(0.0, close.arrowDeg!!, 1.0); assertTrue(close.arrowUncertaintyDeg!! >= 90.0); assertTrue(Note.GPS_TOO_CLOSE_FOR_DIRECTION in close.notes)
+        val rough = FindResolver.resolve(inputs(tgt = target(30.0, acc = 25.0)))
+        assertEquals(0.0, rough.arrowDeg!!, 1.0)
+        assertTrue("the wedge shows how unsure it is", rough.arrowUncertaintyDeg!! > 45.0)
     }
 
-    @Test fun staleTargetPositionNeverGetsAnArrow() {
+    @Test fun silentTargetGetsAnArrowToItsPredictedPositionWithAWideningWedge() {
         val s = FindResolver.resolve(inputs(tgt = target(200.0, age = 90_000)))
-        assertEquals(FindMode.LAST_KNOWN, s.mode); assertNull(s.arrowDeg); assertEquals(Freshness.STALE, s.targetFreshness)
+        assertEquals(FindMode.PREDICTED, s.mode); assertEquals(Source.PREDICTED, s.arrowSource)
+        assertEquals(0.0, s.arrowDeg!!, 1.0); assertEquals(Freshness.STALE, s.targetFreshness)
         assertTrue(Note.TARGET_POSITION_OLD in s.notes)
+        val longer = FindResolver.resolve(inputs(tgt = target(200.0, age = 150_000)))
+        assertTrue("longer silence, wider wedge", longer.arrowUncertaintyDeg!! > s.arrowUncertaintyDeg!!)
+        assertEquals("too old to predict", FindMode.UNAVAILABLE, FindResolver.resolve(inputs(tgt = target(200.0, age = 11 * 60_000L))).mode)
     }
 
-    @Test fun unreliableHeadingRemovesTheArrow() {
+    @Test fun roughCompassWidensTheArrowAndAnOldHeadingRemovesIt() {
         val s = FindResolver.resolve(inputs(tgt = target(100.0), h = HeadingFix(0.0, 80.0, t0)))
-        assertNull(s.arrowDeg); assertTrue(Note.HEADING_UNRELIABLE in s.notes)
+        assertEquals(0.0, s.arrowDeg!!, 1.0); assertTrue(s.arrowUncertaintyDeg!! >= 80.0); assertTrue(Note.HEADING_UNRELIABLE in s.notes)
         assertNull(FindResolver.resolve(inputs(tgt = target(100.0), h = HeadingFix(0.0, 5.0, t0 - 10_000))).arrowDeg)
+    }
+
+    @Test fun compassArrowTurnsWithThePhone() {
+        // Target due north; phone facing east, so the arrow points left (-90).
+        val s = FindResolver.resolve(inputs(tgt = target(6.0), h = HeadingFix(90.0, 10.0, t0)))
+        assertEquals(-90.0, s.arrowDeg!!, 1.0)
     }
 
     @Test fun missingMyLocationIsReported() {
@@ -254,14 +267,33 @@ class FindTest {
         assertEquals(FindMode.PRECISION_DISTANCE, s.mode); assertNull(s.arrowDeg)
     }
 
-    @Test fun bluetoothProximityNeverProducesAnArrow() {
-        val s = FindResolver.resolve(inputs(rssi = goodRssi(-70), mine = null))
-        assertEquals(FindMode.BLE_PROXIMITY, s.mode); assertNull(s.arrowDeg); assertNull(s.distanceM); assertEquals(Proximity.MEDIUM, s.proximity)
+    @Test fun bluetoothArrowComesOnlyFromTrendTurnOrPrediction() {
+        val steady = FindResolver.resolve(inputs(rssi = goodRssi(-70), mine = null))
+        assertEquals(FindMode.BLE_PROXIMITY, steady.mode); assertNull(steady.arrowDeg); assertNull(steady.distanceM); assertEquals(Proximity.MEDIUM, steady.proximity)
+        val tr = RssiTracker(); feed(tr, t0 - 4_000, 17, 250) { i -> -80 + i } // getting stronger as I walk
+        val warmer = FindResolver.resolve(inputs(rssi = tr.snapshot(t0), mine = null))
+        assertEquals(Trend.IMPROVING, warmer.trend); assertEquals(0.0, warmer.arrowDeg!!, 1e-9); assertEquals(Source.BLE_TREND, warmer.arrowSource)
+        val tr2 = RssiTracker(); feed(tr2, t0 - 4_000, 17, 250) { i -> -55 - i } // getting weaker: turn round
+        assertEquals(180.0, FindResolver.resolve(inputs(rssi = tr2.snapshot(t0), mine = null)).arrowDeg!!, 1e-9)
+    }
+
+    @Test fun predictionCarriesTheirWalkForwardAndStopsAfterAWhile() {
+        val (la1, lo1) = app.linkfill.core.estimate.GapEstimator.offset(17.0, 78.0, 0.0, 0.0)
+        val (la2, lo2) = app.linkfill.core.estimate.GapEstimator.offset(17.0, 78.0, 20.0, 0.0) // 20 m north in 20 s: 1 m/s
+        val track = listOf(LocFix(la1, lo1, 3.0, t0 - 30_000), LocFix(la2, lo2, 3.0, t0 - 10_000))
+        val p = app.linkfill.core.find.Predict.position(track, t0)!!
+        assertEquals(30.0, app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, p.lat, p.lon), 0.5) // 10 s more at 1 m/s
+        assertEquals(13.0, p.accuracyM, 1e-6) // 3 m fix + 1 m/s for 10 s
+        val far = app.linkfill.core.find.Predict.position(track, t0 + 120_000)!!
+        assertEquals("coasts at most 30 s", 50.0, app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, far.lat, far.lon), 0.5)
+        val jitter = listOf(LocFix(la1, lo1, 8.0, t0 - 30_000), LocFix(la1 + 1e-5, lo1, 8.0, t0 - 10_000)) // 1 m of GPS noise
+        assertEquals(1.1, app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, app.linkfill.core.find.Predict.position(jitter, t0)!!.lat, lo1), 0.2)
     }
 
     @Test fun veryCloseBluetoothOverridesAnUncertainGpsArrow() {
         val s = FindResolver.resolve(inputs(rssi = goodRssi(-45), tgt = target(60.0)))
-        assertEquals(FindMode.BLE_PROXIMITY, s.mode); assertNull(s.arrowDeg)
+        assertEquals(FindMode.BLE_PROXIMITY, s.mode) // closeness from Bluetooth; the arrow still points where their GPS says
+        assertEquals(Source.GPS, s.arrowSource)
     }
 
     @Test fun noisyBluetoothIsNotPresentedAsGuidance() {

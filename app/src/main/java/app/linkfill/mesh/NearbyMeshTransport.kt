@@ -31,6 +31,10 @@ class NearbyMeshTransport(
     /** Point-to-point tunnel frames (Find Member), see core `Tunnel`. They never enter the mesh. */
     private val onTunnel: (ByteArray) -> Unit = {},
     private val onLinkChanged: () -> Unit = {},
+    /** Shown only if Android keeps refusing location (error 8034) for 30 s; the app then asks for "all the time". */
+    private val permissionHint: String = "",
+    /** Called when a start that had failed succeeds, so the app can clear a stale error. */
+    private val onRecovered: () -> Unit = {},
 ) {
     val health = TransportHealth(TransportKind.NEARBY)
     private val client = Nearby.getConnectionsClient(context)
@@ -70,10 +74,11 @@ class NearbyMeshTransport(
             pending.remove(endpointId)
             if (result.status.statusCode == ConnectionsStatusCodes.STATUS_OK) connected += endpointId
             health.peers = connected.size
+            discover()
             onLinkChanged()
         }
 
-        override fun onDisconnected(endpointId: String) { connected -= endpointId; names.remove(endpointId); health.peers = connected.size; onLinkChanged() }
+        override fun onDisconnected(endpointId: String) { connected -= endpointId; names.remove(endpointId); health.peers = connected.size; discover(); onLinkChanged() }
     }
 
     private val discovery = object : EndpointDiscoveryCallback() {
@@ -91,10 +96,52 @@ class NearbyMeshTransport(
         if (running) return
         running = true
         health.up = true
-        client.startAdvertising(nodeName, SERVICE, lifecycle, AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build())
-            .addOnFailureListener { onError("Nearby advertising failed: ${it.message}") }
-        client.startDiscovery(SERVICE, discovery, DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build())
-            .addOnFailureListener { onError("Nearby discovery failed: ${it.message}") }
+        ensure()
+    }
+
+    private var advertising = false
+    private var discovering = false
+    private var failures = 0
+    private var retryAfterMs = 0L
+
+    /**
+     * Starts whatever should be running and is not. Android refuses Nearby's location use whenever the app does not count as
+     * "in use" (screen off, another app on top) and reports error 8034; that is temporary, so a refusal is retried every
+     * 10 s instead of failing for good, and only a refusal that lasts 30 s is reported. Call it every few seconds.
+     */
+    fun ensure() {
+        if (!running || android.os.SystemClock.elapsedRealtime() < retryAfterMs) return
+        if (!advertising) {
+            advertising = true
+            client.startAdvertising(nodeName, SERVICE, lifecycle, AdvertisingOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build())
+                .addOnSuccessListener { ok() }.addOnFailureListener { advertising = false; fail("advertising", it) }
+        }
+        discover()
+    }
+
+    private fun ok() { if (failures > 0) { failures = 0; onRecovered() } }
+
+    private fun fail(what: String, e: Exception) {
+        val code = (e as? com.google.android.gms.common.api.ApiException)?.statusCode
+        android.util.Log.w("KHOJ", "Nearby $what failed: ${e.message}")
+        retryAfterMs = android.os.SystemClock.elapsedRealtime() + 10_000
+        val missingPermission = code != null && code in 8030..8040
+        if (!missingPermission) onError("Nearby $what failed: ${e.message}")
+        else if (++failures == 3 && permissionHint.isNotEmpty()) onError(permissionHint)
+    }
+
+    /**
+     * Nearby discovery includes Bluetooth Classic inquiry, which blocks BLE reception on the same chip: with it running,
+     * the advertising mesh delivered 22-64% of frames at 1 m (measured on two iQOOs). So discover only while not
+     * connected to anyone; incoming connections still arrive through advertising.
+     */
+    private fun discover() {
+        val want = running && connected.isEmpty()
+        if (want == discovering) return
+        discovering = want
+        if (want) client.startDiscovery(SERVICE, discovery, DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build())
+            .addOnSuccessListener { ok() }.addOnFailureListener { discovering = false; fail("discovery", it) }
+        else client.stopDiscovery()
     }
 
     /** True when a Nearby connection to the phone with node id [nodeId] is up. */
@@ -124,8 +171,8 @@ class NearbyMeshTransport(
     fun stop() {
         if (!running) return
         running = false
-        client.stopAdvertising()
-        client.stopDiscovery()
+        client.stopAdvertising(); advertising = false
+        client.stopDiscovery(); discovering = false
         connected.forEach(client::disconnectFromEndpoint)
         connected.clear(); pending.clear()
         health.up = false; health.peers = 0

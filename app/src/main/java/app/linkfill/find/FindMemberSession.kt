@@ -56,6 +56,7 @@ data class FindUi(
     val sessionId: String,
     val beingFoundBy: String?,
     val now: Long,
+    val linkMedium: String? = null,
 )
 
 /**
@@ -80,6 +81,8 @@ class FindMemberSession(private val context: Context, private val host: Host) {
         fun declinationKnown(): Boolean
         fun sendTunnel(to: Int, frame: ByteArray): Boolean
         fun hasDirectLink(to: Int): Boolean
+        /** Which radio the direct link to [to] is on now ("Wi-Fi Direct / hotspot", "Bluetooth"), or null. */
+        fun linkMedium(to: Int): String? = null
         /** Ask the mesh to keep Nearby connected (needed for the tunnel). */
         fun keepNearby(on: Boolean)
         fun isFindable(): Boolean
@@ -105,6 +108,8 @@ class FindMemberSession(private val context: Context, private val host: Host) {
     private var targetId = 0
     private var targetName = ""
     private var active = false
+    /** The member being found right now, or null. */
+    val activeTarget: Int? get() = if (active) targetId else null
     private var sessionId = ""
     private var phase = LinkPhase.IDLE
     private var phaseDetail = ""
@@ -113,6 +118,11 @@ class FindMemberSession(private val context: Context, private val host: Host) {
     private var lastRanging: RangingFix? = null
     private var rangingTech: String? = null
     private val rssi = RssiTracker()
+    private val spin = app.linkfill.core.find.SpinFinder()
+    private var turnFix: WalkFix? = null
+    /** Their recent positions, for predicting where they are when updates stop. */
+    private val track = ArrayDeque<LocFix>()
+    private var onTarget = false
     private val smoother = AngleSmoother(250.0)
     private val cue = ImprovementCue()
     private var lastEval = 0L
@@ -151,6 +161,7 @@ class FindMemberSession(private val context: Context, private val host: Host) {
         targetId = id; targetName = name; active = true
         sessionId = ByteArray(3).also(random::nextBytes).joinToString("") { "%02x".format(it) }
         rssi.reset(); smoother.reset(); cue.reset(); lastRanging = null; rangingTech = null
+        spin.reset(); turnFix = null; track.clear(); onTarget = false
         steps.reset(); walker.reset(); walkFix = null; walkIssue = null; lastSolveMs = 0
         motion.start()
         framesHeard1m = 0; framesHeardCoded = 0; lastHeardMs = 0; lastMode = null; requestsSent = 0
@@ -198,6 +209,8 @@ class FindMemberSession(private val context: Context, private val host: Host) {
     }
 
     private fun sendRequest(now: Long) {
+        // Two-way finding: they already range with me as initiator; asking again would tear their session down.
+        if (responderPeer == targetId && rangingSession != null) { phase = LinkPhase.NEGOTIATING; phaseDetail = "${targetName}'s phone is already measuring the distance to you"; return }
         if (!host.hasDirectLink(targetId)) { phase = LinkPhase.NO_DIRECT_LINK; phaseDetail = "No direct phone-to-phone link yet; connecting"; return }
         val ok = host.sendTunnel(targetId, seal(Tunnel.Kind.REQUEST, ByteArray(0), targetId, now))
         requestsSent++; lastRequestMs = now
@@ -212,6 +225,9 @@ class FindMemberSession(private val context: Context, private val host: Host) {
         if (coded) { framesHeardCoded++; return } // LE Coded RSSI is not comparable with 1M RSSI; do not mix them
         framesHeard1m++
         rssi.add(now, rssiDbm)
+        // Turn-to-find: file each reading under the compass heading it was taken at, when the compass can be trusted.
+        host.heading()?.takeIf { now - it.atMs <= FindResolver.HEADING_FRESH_MS && it.uncertaintyDeg <= FindResolver.MAX_HEADING_UNCERTAINTY_DEG }
+            ?.let { spin.add(now, it.trueDeg, rssiDbm) }
     }
 
     fun setGroundTruth(m: Double?) { groundTruth = m }
@@ -344,7 +360,7 @@ class FindMemberSession(private val context: Context, private val host: Host) {
         val m = host.member(targetId)
         val mine = host.myFix()
         val me = mine?.let { LocFix(it.latitude, it.longitude, it.accuracyM.toDouble(), it.fixTimeMs) }
-        val target = m?.let { LocFix(it.lat, it.lon, it.accuracyM.toDouble(), it.heardAt) }
+        val target = m?.takeIf { app.linkfill.mesh.MeshController.hasPosition(it.lat, it.lon) }?.let { LocFix(it.lat, it.lon, it.accuracyM.toDouble(), it.heardAt) }
         val snap = rssi.snapshot(now).takeIf { it.samples > 0 }
         val newest = lastRanging
         if (newest != null && newest.atMs > lastSolveMs && now - lastSolveMs >= 500) {
@@ -356,7 +372,14 @@ class FindMemberSession(private val context: Context, private val host: Host) {
             // Keep the bearing current as I keep walking: recompute from my newest position without re-solving.
             walkFix = walkFix?.let { old -> walker.solve().solution?.let { sol -> walker.bearingFrom(sol, steps.east, steps.north).let { (b, d, u) -> WalkFix(b, u, d, old.atMs) } } ?: old }
         }
-        val state = FindResolver.resolve(FindInputs(now, lastRanging, snap, me, target, host.heading(), host.trustAngle(), walkFix, walkIssue))
+        val turn = spin.solve(now)
+        if (target != null && track.lastOrNull()?.atMs != target.atMs) { track.addLast(target); while (track.size > 20) track.removeFirst() }
+        turn.bearingTrueDeg?.let { b -> turnFix = WalkFix(b, turn.uncertaintyDeg!!, Double.NaN, now) }
+        val state = FindResolver.resolve(FindInputs(now, lastRanging, snap, me, target, host.heading(), host.trustAngle(), walkFix, walkIssue, turnFix, track.toList()))
+        // AirTag-style confirmation: one buzz when the arrow swings onto the person.
+        val nowOn = FindResolver.isOnTarget(state.arrowDeg)
+        if (nowOn && !onTarget) host.vibrate()
+        onTarget = nowOn
 
         val arrow = state.arrowDeg?.let { smoother.update(it, now) } ?: run { smoother.reset(); null }
         if (cue.update(snap?.trend ?: app.linkfill.core.find.Trend.UNKNOWN, now) && state.mode == FindMode.BLE_PROXIMITY) host.vibrate()
@@ -369,7 +392,7 @@ class FindMemberSession(private val context: Context, private val host: Host) {
             bluetoothHeard = now - lastHeardMs < 5_000 && lastHeardMs != 0L, directLink = host.hasDirectLink(targetId),
             headingTrue = h?.trueDeg, headingUncertainty = h?.uncertaintyDeg, declinationKnown = host.declinationKnown(),
             myFixAccuracyM = mine?.accuracyM?.toDouble(), trustAngle = host.trustAngle(), groundTruthM = groundTruth,
-            logPath = logFile.absolutePath, sessionId = sessionId, beingFoundBy = null, now = now,
+            logPath = logFile.absolutePath, sessionId = sessionId, beingFoundBy = null, now = now, linkMedium = host.linkMedium(targetId),
         )
     }
 

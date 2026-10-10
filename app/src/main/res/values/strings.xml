@@ -123,6 +123,29 @@
     <string name="rewind_desc">What your pendant saw, newest first. Photos stay only on this phone and are erased when KHOJ turns off.</string>
     <string name="rewind_empty">No photos yet. Turn on pendant mode in Settings.</string>
 
+
+    <!-- The Call redesign -->
+    <string name="tab_radar">Radar</string>
+    <string name="tab_group">Group</string>
+    <string name="tab_help">Help</string>
+    <string name="tab_board">Board</string>
+    <string name="tab_scan">Scan</string>
+    <string name="tab_alerts">Alerts</string>
+    <string name="nearest">Nearest</string>
+    <string name="farthest">Farthest</string>
+    <string name="circle_ring">%1$d m circle</string>
+    <string name="outside_circle">Outside the group circle</string>
+    <string name="theme_day">Day mode</string>
+    <string name="theme_night">Night mode</string>
+    <string name="sos_active">SOS SENT</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="nearby_needs_location">Nearby sharing is waiting for location access. Allow location "all the time" in Settings so it keeps working with the screen off.</string>
+    <string name="bg_location_title">Keep working with the screen off</string>
+    <string name="bg_location_desc">Allow location "all the time" so family can still find you when your screen is off or KHOJ is in the background.</string>
+    <string name="looking_for_you">%1$s is looking for you</string>
+    <string name="looking_for_you_body">Open KHOJ and tap Find to walk toward each other.</string>
+    <string name="find_them">Find %1$s</string>
+
     <string-array name="compass">
         <item>N</item><item>NE</item><item>E</item><item>SE</item><item>S</item><item>SW</item><item>W</item><item>NW</item>
     </string-array>

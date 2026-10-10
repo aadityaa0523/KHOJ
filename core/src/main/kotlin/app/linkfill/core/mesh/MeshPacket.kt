@@ -12,7 +12,8 @@ enum class MeshType(val code: Int) {
     ACK(5),      // end-to-end acknowledgement of an SOS or RALLY
     NEIGHBOR(6), // unencrypted filler so neighbours can measure link quality when there is nothing else to send
     // Public messages (see PublicMessage): not sealed with a crew key.
-    FOUND(7), FOUND_ACK(8), PUBLIC_SOS(9), RESPOND(10), OFFICIAL(11), FOUND_NOTICE(12);
+    FOUND(7), FOUND_ACK(8), PUBLIC_SOS(9), RESPOND(10), OFFICIAL(11), FOUND_NOTICE(12),
+    LOOKING(13); // crew: "I am trying to find <member>", so they can navigate back to me
 
     companion object { fun of(code: Int) = entries.firstOrNull { it.code == code } }
 }
@@ -104,6 +105,8 @@ sealed interface MeshMessage {
     data class Rally(val lat: Double, val lon: Double, val meetAtS: Long, val label: String) : MeshMessage
     data class Text(val text: String) : MeshMessage
     data class Ack(val originId: Int, val packetId: Int) : MeshMessage
+    /** The sender is looking for the crew member whose current node id is [targetId]. */
+    data class Looking(val targetId: Int) : MeshMessage
 
     companion object {
         private const val MAX_TEXT = 100
@@ -114,6 +117,7 @@ sealed interface MeshMessage {
             is Rally -> MeshType.RALLY to buf(12, m.label) { putLatLon(m.lat, m.lon); putInt(m.meetAtS.toInt()) }
             is Text -> MeshType.TEXT to buf(0, m.text) {}
             is Ack -> MeshType.ACK to ByteBuffer.allocate(8).putInt(m.originId).putInt(m.packetId).array()
+            is Looking -> MeshType.LOOKING to ByteBuffer.allocate(4).putInt(m.targetId).array()
         }
 
         fun decode(type: MeshType, b: ByteArray): MeshMessage? = try {
@@ -130,6 +134,7 @@ sealed interface MeshMessage {
                 MeshType.RALLY -> { val (la, lo) = bb.getLatLon(); Rally(la, lo, bb.int.toLong() and 0xFFFFFFFFL, bb.rest()) }
                 MeshType.TEXT -> Text(bb.rest())
                 MeshType.ACK -> Ack(bb.int, bb.int)
+                MeshType.LOOKING -> Looking(bb.int)
                 else -> null
             }?.takeIf { valid(it) }
         } catch (_: BufferUnderflowException) {

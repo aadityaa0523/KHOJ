@@ -52,7 +52,7 @@ class HeadingProvider(private val context: Context) : SensorEventListener {
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { status = accuracy }
 
     override fun onSensorChanged(e: SensorEvent) {
-        val rotation = (context.getSystemService(WindowManager::class.java)?.defaultDisplay ?: return).rotation
+        val rotation = if (android.os.Build.VERSION.SDK_INT >= 30) { try { context.display?.rotation ?: android.view.Surface.ROTATION_0 } catch (_: Throwable) { android.view.Surface.ROTATION_0 } } else { @Suppress("DEPRECATION") context.getSystemService(WindowManager::class.java)?.defaultDisplay?.rotation ?: android.view.Surface.ROTATION_0 }
         val sol = Orientation.heading(e.values, rotation) ?: return
         posture = sol.posture
         val estimated = if (e.values.size >= 5 && e.values[4] >= 0f) Angles.toDegrees(e.values[4].toDouble()) else null

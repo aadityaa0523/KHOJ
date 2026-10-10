@@ -37,7 +37,8 @@ class LossPredictor(
     }
 
     companion object {
-        const val RESOURCE = "/app/linkfill/core/mesh/loss_predictor_v1.txt"
+        /** v2: trained on real iQOO field logs to predict "link drops for 5 s" (training/train_link_ai.py); v1 was simulated. */
+        const val RESOURCE = "/app/linkfill/core/mesh/loss_predictor_v2.txt"
 
         /** Fits by full-batch gradient descent with L2 regularisation. Labels are 0/1. */
         fun train(x: List<DoubleArray>, y: List<Int>, columns: List<Int>, l2: Double = 1e-3, iterations: Int = 400, lr: Double = 0.5): LossPredictor {

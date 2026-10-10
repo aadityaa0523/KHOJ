@@ -56,4 +56,13 @@
     <string name="find_note_walk_ambiguous">Two places fit the measurements; keep walking and turn a corner</string>
     <string name="find_note_walk_poor">The distances do not fit one spot (are they moving?)</string>
     <string name="pause_being_found">Pause for 30 minutes</string>
+    <string name="find_mode_turn">Direction from turning (estimated)</string>
+    <string name="find_turn_coach">Hold the phone flat at your chest and turn slowly all the way round</string>
+    <string name="find_ahead">Ahead</string>
+    <string name="find_turn_left">Turn left</string>
+    <string name="find_turn_right">Turn right</string>
+    <string name="find_mode_predicted">Where they probably are now</string>
+    <string name="find_predicted_age">Predicted from their last movements · last heard %1$s ago</string>
+    <string name="find_turn_around">Turn around</string>
+    <string name="find_searching">Searching… walk a few steps</string>
 </resources>

@@ -9,6 +9,8 @@ playServicesLocation = "21.4.0"
 junit = "4.13.2"
 zxing = "3.5.3"
 camerax = "1.6.2"
+litert = "1.4.2"
+qnn = "2.50.0"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
@@ -24,6 +26,9 @@ zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" 
 camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camerax" }
 camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert" }
+qnn-litert-delegate = { group = "com.qualcomm.qti", name = "qnn-litert-delegate", version.ref = "qnn" }
+qnn-runtime = { group = "com.qualcomm.qti", name = "qnn-runtime", version.ref = "qnn" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>KHOJ - Diya Night</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=DM+Sans:wght@500;700&family=Tiro+Devanagari+Hindi&display=swap" rel="stylesheet">
+<style>
+:root{--night:#0B0820;--vio:#7B5CFF;--fl:#FF8A1F;--gold:#FFD36B;--soft:#F7F3FF;--mut:rgba(247,243,255,.6);--red:#FF4D5E}
+*{box-sizing:border-box;margin:0}
+html{background:#04030f}
+body{width:390px;height:844px;overflow:hidden;position:relative;display:flex;flex-direction:column;color:var(--soft);font:500 14px/1.2 'DM Sans',system-ui,sans-serif;background:radial-gradient(75% 34% at 50% 68%,rgba(255,138,31,.2),transparent 72%),radial-gradient(120% 46% at 50% 0,rgba(123,92,255,.3),transparent 66%),var(--night)}
+/* status + header */
+.sb{height:30px;padding:9px 22px 0;display:flex;justify-content:space-between;font-size:13px;font-weight:700}
+.bat{display:inline-block;width:22px;height:11px;border:1.5px solid var(--soft);border-radius:3px;position:relative;vertical-align:-1px;margin-left:8px}
+.bat::after{content:"";position:absolute;inset:1px 5px 1px 1px;background:var(--soft);border-radius:1px}
+.hd{height:52px;padding:6px 16px 0;display:flex;align-items:center;justify-content:space-between}
+.logo{font:600 27px Fraunces,serif;letter-spacing:.06em;display:flex;align-items:center}
+.logo small{font:400 13px 'Tiro Devanagari Hindi',serif;letter-spacing:0;color:var(--gold);margin-left:8px}
+.mf{width:9px;height:9px;margin:0 9px 4px 3px;border-radius:50% 0 50% 50%;transform:scaleY(1.45) rotate(-45deg);background:radial-gradient(circle at 30% 70%,#fff3c4,var(--gold) 35%,var(--fl));box-shadow:0 0 8px var(--fl)}
+.pill{display:flex;align-items:center;gap:7px;padding:7px 12px;border-radius:99px;font-size:12px;background:rgba(123,92,255,.16);border:1px solid rgba(123,92,255,.55);backdrop-filter:blur(14px)}
+.pill i{width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 3px rgba(255,211,107,.22),0 0 10px var(--fl)}
+/* diya field */
+.fd{position:relative;flex:1;overflow:hidden;background:radial-gradient(1.3px 1.3px at 40px 90px,rgba(247,243,255,.75),transparent),radial-gradient(1px 1px at 330px 60px,rgba(247,243,255,.6),transparent),radial-gradient(1.2px 1.2px at 300px 210px,rgba(255,211,107,.7),transparent),radial-gradient(1px 1px at 60px 300px,rgba(247,243,255,.5),transparent),radial-gradient(1px 1px at 350px 420px,rgba(247,243,255,.45),transparent),radial-gradient(1.2px 1.2px at 25px 500px,rgba(255,211,107,.5),transparent),radial-gradient(1px 1px at 190px 40px,rgba(247,243,255,.5),transparent)}
+.cap{position:absolute;top:10px;left:0;right:0;text-align:center;font:italic 500 17px Fraunces,serif;color:var(--mut)}.cap b{font-style:normal;font-weight:600;color:var(--gold)}
+.gc{position:absolute;left:50%;top:62%;width:268px;height:268px;transform:translate(-50%,-50%);border-radius:50%;border:1.5px dashed rgba(123,92,255,.7);background:radial-gradient(circle,rgba(123,92,255,.2),rgba(123,92,255,.05) 70%);box-shadow:inset 0 0 40px rgba(123,92,255,.2)}
+.gc span{position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:700;letter-spacing:.08em;background:#1a1250;border:1px solid rgba(123,92,255,.6);padding:1px 8px;border-radius:8px;white-space:nowrap}
+.tr{position:absolute;left:calc(50% - 125px);top:calc(62% - 322px);width:250px;height:300px;border:3px dotted var(--gold);border-color:transparent var(--gold) var(--gold) transparent;border-radius:50%;-webkit-mask:linear-gradient(to top,#000 4%,transparent 52%);mask:linear-gradient(to top,#000 4%,transparent 52%);filter:drop-shadow(0 0 4px var(--fl))}
+.leg{position:absolute;left:16px;bottom:12px;font-size:11px;color:var(--mut)}
+/* a diya: anchor = bowl rim centre */
+.d{--e:calc(var(--s)*1px);position:absolute;left:calc(50% + var(--x)*1px);top:calc(62% + var(--y)*1px);width:0;height:0;font-size:var(--e)}
+.g{position:absolute;left:0;bottom:calc(var(--e)*-2.8);width:calc(var(--e)*7);height:calc(var(--e)*7);margin-left:calc(var(--e)*-3.5);border-radius:50%;opacity:var(--a);background:radial-gradient(circle,rgba(255,150,40,.55),rgba(255,138,31,.16) 38%,transparent 68%)}
+.f{position:absolute;left:-.5em;bottom:.175em;width:1em;height:1em;border-radius:50% 0 50% 50%;transform:scaleY(1.45) rotate(-45deg);background:radial-gradient(circle at 30% 70%,#fff6d6 0,var(--gold) 28%,var(--fl) 62%,#E8420F);box-shadow:0 0 .5em rgba(255,150,40,.9),0 0 1.6em rgba(255,138,31,.5);animation:fl 2.6s ease-in-out infinite alternate}
+.rd .f{background:radial-gradient(circle at 30% 70%,#ffd6c8 0,#FF7A5A 30%,#E0213A 70%,#8a0f2a);box-shadow:0 0 .5em rgba(255,77,94,.95),0 0 1.6em rgba(224,33,58,.6);animation-duration:.7s}
+.rd .g{background:radial-gradient(circle,rgba(255,77,94,.5),rgba(224,33,58,.14) 38%,transparent 68%)}
+@keyframes fl{to{transform:scaleY(1.58) rotate(-42deg)}}
+.b{position:absolute;left:0;top:0;width:calc(var(--e) + 28px);height:calc(var(--e)*.4 + 10px);margin-left:calc(var(--e)*-.5 - 14px);border-radius:0 0 999px 999px/0 0 100% 100%;border-top:2px solid var(--gold);background:linear-gradient(rgba(123,92,255,.6),rgba(50,32,140,.75));box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.n{position:absolute;left:0;top:calc(var(--e)*.4 + 18px);transform:translateX(-50%);text-align:center;white-space:nowrap}
+.n b{display:block;font:600 16px Fraunces,serif}.n small{display:block;margin-top:2px;font-size:11px;color:var(--mut)}
+.tag{display:inline-block;margin-top:4px;font-size:10px;font-weight:700;letter-spacing:.03em;background:var(--red);color:#fff;padding:2px 8px;border-radius:8px}
+.off .b{background:linear-gradient(rgba(120,115,150,.28),rgba(40,36,70,.5));border-top-color:#6c6888}.off .n{color:rgba(247,243,255,.55)}
+.w{position:absolute;left:-1.5px;bottom:0;width:3px;height:13px;border-radius:2px;background:linear-gradient(#9a96b4,#4a4668)}
+.w::before{content:"";position:absolute;left:-1px;top:-2px;width:5px;height:5px;border-radius:50%;background:#9db4ff;opacity:.55}
+.sm{position:absolute;left:-1px;bottom:14px;width:2px;height:44px;border-radius:2px;background:linear-gradient(to top,rgba(170,180,230,.4),transparent)}
+/* SOS */
+.sos{margin:8px 16px 0;height:68px;border-radius:20px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:14px;background:linear-gradient(180deg,#F43E48,#BE132D);box-shadow:0 10px 34px rgba(235,40,50,.55),inset 0 1px 0 rgba(255,255,255,.4)}
+.sos::after{content:"";position:absolute;left:0;right:0;bottom:0;height:5px;background:rgba(0,0,0,.3)}
+.ic{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;background:rgba(0,0,0,.22);border:3px solid rgba(255,255,255,.92)}
+.tx b{display:block;font:700 22px 'DM Sans';letter-spacing:.12em;margin-bottom:3px}.tx span{font-size:11.5px;opacity:.92}
+/* bottom nav */
+.nv{height:72px;margin-top:10px;padding-top:10px;display:flex;background:linear-gradient(rgba(40,28,104,.92),rgba(14,10,40,.98));border-top:1px solid rgba(123,92,255,.4)}
+.nn{flex:1;text-align:center;font-size:12px;font-weight:500;color:var(--mut)}.nn.on{color:var(--soft);font-weight:700}
+.pl{width:58px;height:30px;border-radius:15px;margin:0 auto 4px;display:grid;place-items:center}.on .pl{background:rgba(123,92,255,.5)}.on .i{color:var(--gold)}
+.i{width:24px;height:24px;display:block;position:relative}
+.i.r{background:radial-gradient(circle,currentColor 0 2.5px,transparent 3px 6px,currentColor 6.5px 8px,transparent 8.5px 10.5px,currentColor 11px 12px,transparent 12.5px)}
+.i.g::before{content:"";position:absolute;left:8px;top:2px;width:8px;height:8px;border-radius:50%;background:currentColor}
+.i.g::after{content:"";position:absolute;left:3px;top:12px;width:18px;height:9px;border-radius:9px 9px 3px 3px;background:currentColor}
+.i.h{display:grid;place-items:center;font-size:11px;border:2px solid currentColor;border-radius:50%}.i.h::before{content:"\271A"}
+.i.s::before{content:"\2699\FE0E";font-size:24px;line-height:24px}
+@media (prefers-reduced-motion:reduce){.f{animation:none}}
+</style></head><body>
+<div class="sb"><span>3:28</span><span>&#5765; <i class="bat"></i></span></div>
+<div class="hd"><div class="logo"><i class="mf"></i>KHOJ<small>खोज</small></div><div class="pill"><i></i>Offline mesh on · 3 of 4 nearby</div></div>
+<section class="fd">
+  <div class="cap"><b>Amma</b> is closest, 12 m away</div>
+  <div class="gc"><span>50 m GROUP CIRCLE</span></div>
+  <div class="tr"></div>
+  <div class="d off" style="--s:14;--x:-96;--y:-208"><div class="sm"></div><div class="w"></div><div class="b"></div><div class="n"><b>Papa</b><small>3 min ago</small><small>lost contact</small></div></div>
+  <div class="d" style="--s:38;--x:70;--y:-60;--a:1"><div class="g"></div><div class="f"></div><div class="b"></div><div class="n"><b>Amma</b><small>12 m NE</small><small>seen 4 s ago</small></div></div>
+  <div class="d" style="--s:26;--x:-104;--y:10;--a:.75"><div class="g"></div><div class="f"></div><div class="b"></div><div class="n"><b>Ravi</b><small>38 m W</small><small>seen 9 s ago</small></div></div>
+  <div class="d rd" style="--s:14;--x:0;--y:168;--a:.6"><div class="g"></div><div class="f"></div><div class="b"></div><div class="n"><b>Priya</b><small>140 m S · 22 s ago</small><span class="tag">outside circle</span></div></div>
+  <div class="d" style="--s:24;--x:0;--y:0;--a:.9"><div class="g"></div><div class="f" style="background:radial-gradient(circle at 30% 70%,#fff,#fff0b8 30%,var(--gold) 65%,var(--fl))"></div><div class="b"></div><div class="n"><b>You</b></div></div>
+  <div class="leg">Brighter flame = closer</div>
+</section>
+<div class="sos"><div class="ic">SOS</div><div class="tx"><b>HOLD FOR SOS</b><span>Hold 2 seconds to alert group and helpers</span></div></div>
+<nav class="nv">
+  <div class="nn on"><div class="pl"><i class="i r"></i></div>Radar</div>
+  <div class="nn"><div class="pl"><i class="i g"></i></div>Group</div>
+  <div class="nn"><div class="pl"><i class="i h"></i></div>Helpers</div>
+  <div class="nn"><div class="pl"><i class="i s"></i></div>Settings</div>
+</nav>
+</body></html>

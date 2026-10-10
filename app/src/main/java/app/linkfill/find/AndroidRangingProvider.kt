@@ -155,7 +155,7 @@ class AndroidRangingSession(
                 val config = OobInitiatorRangingConfig.Builder()
                     .setFastestRangingInterval(Duration.ofMillis(200))
                     .setSlowestRangingInterval(Duration.ofMillis(2000))
-                    .setRangingMode(OobInitiatorRangingConfig.RANGING_MODE_AUTO)
+                    .setRangingMode(OobInitiatorRangingConfig.RANGING_MODE_HIGH_ACCURACY_PREFERRED) // AUTO picked plain RSSI ranging on two iQOOs with Channel Sounding (measured)
                     // Basic: the tunnel carrying the negotiation is already authenticated and encrypted with the crew key.
                     .setSecurityLevel(OobInitiatorRangingConfig.SECURITY_LEVEL_BASIC)
                     .addDeviceHandle(handle)

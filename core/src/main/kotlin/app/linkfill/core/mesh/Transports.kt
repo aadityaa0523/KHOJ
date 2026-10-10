@@ -54,7 +54,7 @@ object TransportSelector {
      * Which local radios carry this frame. The router's duplicate filter makes sending on several safe.
      * Mobile data is not chosen here: it works as a bridge ([MeshRouter.bridge]), uploading each packet once.
      */
-    fun choose(type: MeshType, risk: Double?, health: Collection<TransportHealth>, mode: CombineMode): List<TransportKind> {
+    fun choose(type: MeshType, risk: Double?, health: Collection<TransportHealth>, mode: CombineMode, risky: Double = RISKY): List<TransportKind> {
         val usable = health.filter { it.usable && it.kind != TransportKind.INTERNET }
         if (usable.isEmpty()) return emptyList()
         if (type == MeshType.NEIGHBOR) return usable.filter { it.kind == TransportKind.BLE }.map { it.kind } // link measurement only
@@ -65,7 +65,7 @@ object TransportSelector {
             CombineMode.ALL -> usable.map { it.kind }
             CombineMode.BEST_ONLY -> listOf(best.kind)
             CombineMode.AUTO -> when {
-                urgent || (risk ?: 1.0) >= RISKY -> usable.map { it.kind }
+                urgent || (risk ?: 1.0) >= risky -> usable.map { it.kind }
                 else -> {
                     // Bluetooth advertising always runs (it is how new phones discover us); add the best other link
                     // when Bluetooth alone is not good enough or the other link is clearly better.

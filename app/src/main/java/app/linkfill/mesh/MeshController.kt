@@ -144,6 +144,8 @@ data class MeshUiState(
     val setupDone: Boolean = false,
     val headingDeg: Float? = null,
     val beingFoundBy: String? = null,
+    /** Crew members looking for me right now (node id to name): the two-way navigator offers to find them back. */
+    val seekers: Map<Int, String> = emptyMap(),
     val trustAngle: Boolean = false,
     val meetPoint: MeetPoint? = null,
     val alerts: List<HomeAlert> = emptyList(),
@@ -169,16 +171,21 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     private val prefs = context.getSharedPreferences("mesh", Context.MODE_PRIVATE)
     private val random: Random = SecureRandom().asKotlinRandom()
     private val predictor = LossPredictor.loadBundled()
+    /** The same link model on the NPU (LiteRT + QNN); null falls back to [predictor] on the CPU. */
+    private val linkAi: LinkAi? by lazy { LinkAi.open(context) }
     private val radio = BleMeshRadio(context, ::onFrame, { msg -> _state.update { it.copy(error = msg) } }, { bytes, rssi -> onOtherFrame(bytes, TransportKind.GATT, rssi) })
     private val aware = WifiAwareTransport(context, { onOtherFrame(it, TransportKind.WIFI_AWARE, -60) }) { msg -> _state.update { it.copy(error = msg) } }
     private var nearby: NearbyMeshTransport? = null
+    /** Point-to-point Nearby link for a Find pair; can upgrade to Wi-Fi Direct. The cluster link pauses while it runs. */
+    private var pair: NearbyPairLink? = null
     /** Nearby is expensive (measured: about 3x the Bluetooth stack's CPU on an iQOO SM8850), so members run it on demand. */
     private var nearbyUntil = 0L
     private var lastNeighborMs = 0L
     private val internet = InternetRelay(context, scope) { onOtherFrame(it, TransportKind.INTERNET, -100) }
     private val bleHealth = app.linkfill.core.mesh.TransportHealth(TransportKind.BLE)
     // Default radios: Wi-Fi Aware where the phone has it; otherwise Nearby, which reaches Wi-Fi Direct/hotspot underneath.
-    private val enabled = (prefs.getStringSet("transports", null) ?: setOf("BLE", "INTERNET", if (aware.supported) "WIFI_AWARE" else "NEARBY")).mapNotNull { n -> TransportKind.entries.firstOrNull { it.name == n } }.toMutableSet()
+    private val enabled = ((prefs.getStringSet("transports", null) ?: setOf("BLE", "INTERNET", if (aware.supported) "WIFI_AWARE" else "NEARBY")) + "NEARBY")
+        .mapNotNull { n -> TransportKind.entries.firstOrNull { it.name == n } }.toMutableSet()
     private val location = LocationProvider(context)
     private val heading = HeadingProvider(context)
     private val findHost: FindMemberSession.Host = object : FindMemberSession.Host {
@@ -188,8 +195,9 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         override fun member(id: Int) = members[id]
         override fun heading() = heading.latest
         override fun declinationKnown() = heading.declinationKnown
-        override fun sendTunnel(to: Int, frame: ByteArray) = nearby?.sendTunnel(to, frame) == true
-        override fun hasDirectLink(to: Int) = nearby?.hasLinkTo(to) == true
+        override fun sendTunnel(to: Int, frame: ByteArray) = pair?.sendTunnel(to, frame) == true || nearby?.sendTunnel(to, frame) == true
+        override fun hasDirectLink(to: Int) = pair?.hasLinkTo(to) == true || nearby?.hasLinkTo(to) == true
+        override fun linkMedium(to: Int): String? = if (pair?.hasLinkTo(to) == true) pair?.medium else if (nearby?.hasLinkTo(to) == true) "Bluetooth (mesh link)" else null
         override fun keepNearby(on: Boolean) { findKeepsNearby = on; applyTransports() }
         // Same group = consent; the person being found is told and can pause it (pauseBeingFound).
         override fun isFindable(): Boolean = find.rangeable() && System.currentTimeMillis() >= findPausedUntil
@@ -218,6 +226,8 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     private val members = LinkedHashMap<Int, CrewMember>()
     private val lostNotified = mutableSetOf<Int>()
     private val outsideCircle = mutableSetOf<Int>()
+    /** node id of someone looking for me -> when their latest LOOKING arrived. */
+    private val seekers = LinkedHashMap<Int, Long>()
     private val feed = ArrayDeque<FeedItem>()
     private val sosBoard = LinkedHashMap<Long, SosAlert>()
     private val sentReports = ArrayList<SentReport>()
@@ -236,7 +246,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         MeshUiState(
             name = prefs.getString("name", null) ?: android.os.Build.MODEL,
             crewCode = prefs.getString("crew", null),
-            predictorStatus = predictor?.let { "Loaded (${it.meta["trained_at"] ?: "?"}, trained on simulated links)" } ?: "Not bundled; using 1 - delivery ratio",
+            predictorStatus = predictor?.let { "CPU model (${it.meta["rows"] ?: "?"} real rows, held-out ROC-AUC ${it.meta["model_roc_auc"] ?: "?"})" } ?: "Not bundled; using 1 - delivery ratio",
             logPath = logFile.absolutePath,
             combineMode = prefs.getString("combine", null)?.let { m -> CombineMode.entries.firstOrNull { it.name == m } } ?: CombineMode.AUTO,
             relayUrl = prefs.getString("relay", "") ?: "",
@@ -266,7 +276,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
 
     /** Turns one radio on or off for the mesh. Bluetooth stays on: it is how phones discover each other. */
     fun setTransport(kind: TransportKind, on: Boolean) {
-        if (kind == TransportKind.BLE) return
+        if (kind == TransportKind.BLE || kind == TransportKind.NEARBY) return // Find's direct link needs Nearby
         if (on) enabled += kind else enabled -= kind
         prefs.edit().putStringSet("transports", enabled.map { it.name }.toSet()).apply()
         if (router != null) applyTransports()
@@ -432,6 +442,9 @@ class MeshController(private val context: Context, private val scope: CoroutineS
             "batteryUnrestricted=${batteryUnrestricted()} role=$role")
         // A fresh node id per run keeps the AES-GCM nonces (node id, packet counter) unique across restarts.
         val r = MeshRouter(id, crew, MeshConfig(codedSupported = radio.codedSupported), random, this, predictor)
+        // Link AI: predicted chance each neighbour's link drops in the next 5 s, on the NPU when it opens.
+        predictor?.meta?.let { m -> m["medium_threshold"]?.toDoubleOrNull()?.let { r.riskMedium = it }; m["high_threshold"]?.toDoubleOrNull()?.let { r.riskHigh = it } }
+        linkAi?.let { ai -> r.riskModel = ai::predict; r.riskMedium = ai.mediumThreshold; r.riskHigh = ai.highThreshold }
         router = r
         startedAt = System.currentTimeMillis()
         labeler = LinkLabeler(r.links)
@@ -439,14 +452,15 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         // With mobile data: upload our crew's packets and every public message (SOS, found reports, official alerts).
         r.bridge = { frame, p -> if (p.type != MeshType.NEIGHBOR && (p.crewId == myCrew || p.type == MeshType.SOS || p.type in PublicMessage.TYPES)) internet.upload(frame, p.crewId) }
         r.rssiObserver = { relayId, rssi, coded, now -> find.onBluetoothFrame(relayId, rssi, coded, now) }
+        pair = NearbyPairLink(context, NearbyMeshTransport.nameFor(r.nodeId), { onOtherFrame(it, TransportKind.NEARBY, -60) },
+            { frame -> find.onTunnel(frame, System.currentTimeMillis()) }, BleMeshRadio::log)
         nearby = NearbyMeshTransport(context, NearbyMeshTransport.nameFor(r.nodeId), { onOtherFrame(it, TransportKind.NEARBY, -60) }, { msg -> _state.update { it.copy(error = msg) } },
-            onTunnel = { frame -> find.onTunnel(frame, System.currentTimeMillis()) })
+            onTunnel = { frame -> find.onTunnel(frame, System.currentTimeMillis()) },
+            permissionHint = context.getString(R.string.nearby_needs_location),
+            onRecovered = { _state.update { s -> if (s.error?.startsWith("Nearby") == true || s.error == context.getString(R.string.nearby_needs_location)) s.copy(error = null) else s } })
         bleHealth.up = true
         applyTransports()
-        location.start(onFix = { fix ->
-            heading.setLocation(fix.latitude, fix.longitude, 0.0, fix.fixTimeMs); _state.update { it.copy(myFix = fix) }
-            pendingSos?.let { k -> pendingSos = null; broadcastSos(k) }
-        }, onError = { msg -> _state.update { it.copy(error = msg) } })
+        startLocation()
         heading.onHeading = { h -> _state.update { it.copy(headingDeg = h.trueDeg.toFloat()) }; find.evaluate(System.currentTimeMillis()) }
         heading.start()
         find.refreshCapabilities()
@@ -457,7 +471,9 @@ class MeshController(private val context: Context, private val scope: CoroutineS
             var n = 0L
             while (isActive) {
                 val now = System.currentTimeMillis()
-                r.nextFrame(now)?.let { frame -> transmit(r, frame) }
+                // Idle link-measurement frames dwell 500 ms (two ticks): at Android's 100 ms advertising floor a 250 ms frame
+                // got only ~2 transmissions and receivers caught ~50% of them at 1 m (measured). Real packets still go every tick.
+                r.nextFrame(now, allowFiller = n % 2 == 0L)?.let { frame -> transmit(r, frame) }
                 r.tick(now)
                 safety.tick(now)
                 find.evaluate(now)
@@ -465,6 +481,11 @@ class MeshController(private val context: Context, private val scope: CoroutineS
                 if (n % 20 == 0L) applyTransports() // every 5 s: follow Wi-Fi, data and direct-sharing changes
                 if (n % (if (r.lowPower) 60 else 12) == 0L) sendBeacon(r, now) // every 3 s; 15 s for a low-power member
                 if (n % 40 == 0L) updatePower(r, now)
+                // A location request made while Android briefly refused permission (screen off at the wrong moment) never
+                // delivers; with no fresh fix for 30 s, ask again (measured: the arrow had no position until a restart).
+                if (n % 120 == 60L && _state.value.myFix.let { it == null || now - it.fixTimeMs > 30_000 }) { location.stop(); startLocation() }
+                // Two-way navigator: while I am finding someone, tell them every 10 s so they can navigate back to me.
+                if (n % 40 == 20L && r.crew != null) find.activeTarget?.let { r.originate(MeshMessage.Looking(it), now) }
                 if (n % 4 == 0L) { sampleLinks(r, now); checkLostContact(now) } // every 1 s
                 if (n % 2 == 0L) publish(r, now)
                 n++
@@ -473,10 +494,15 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         }
     }
 
+    private fun startLocation() = location.start(onFix = { fix ->
+        heading.setLocation(fix.latitude, fix.longitude, 0.0, fix.fixTimeMs); _state.update { it.copy(myFix = fix) }
+        pendingSos?.let { k -> pendingSos = null; broadcastSos(k) }
+    }, onError = { msg -> _state.update { it.copy(error = msg) } })
+
     fun stop() {
         loop?.cancel(); loop = null
         radio.stop()
-        aware.stop(); nearby?.stop(); internet.stop()
+        aware.stop(); nearby?.stop(); pair?.stop(); internet.stop()
         safety.stop(); rewind.stop(); siren.stop(); pendingSos = null
         bleHealth.up = false
         location.stop()
@@ -655,7 +681,16 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         val now = System.currentTimeMillis()
         val name = members[originId]?.name ?: "Crew ${Integer.toHexString(originId).takeLast(4)}"
         when (message) {
-            is MeshMessage.Beacon -> { members[originId] = CrewMember(originId, message.name, message.lat, message.lon, message.accuracyM, message.battery, now - ageS * 1000, hops, rssi, message.findable); lostNotified -= originId }
+            is MeshMessage.Beacon -> {
+                // A phone takes a fresh node id each time KHOJ restarts. The same name now speaking under a new id while
+                // the old id is silent is the same person: drop the ghost and its alarms instead of reporting it lost.
+                // shortcut: matches by name, so two silent-then-restarted members with the same name merge; a stable member id in the beacon would fix it.
+                members.values.filter { it.originId != originId && it.name == message.name && now - it.heardAt > 10_000 }.forEach { g ->
+                    members.remove(g.originId); lostNotified -= g.originId; outsideCircle -= g.originId
+                    alerts.remove("lost-${g.originId}"); alerts.remove("circle-${g.originId}")
+                }
+                members[originId] = CrewMember(originId, message.name, message.lat, message.lon, message.accuracyM, message.battery, now - ageS * 1000, hops, rssi, message.findable); lostNotified -= originId
+            }
             is MeshMessage.Sos -> {
                 addFeed(FeedItem(now, name, "SOS: ${message.note} ${where(message.lat, message.lon)}", "SOS", hops, mine = false))
                 val title = context.getString(R.string.sos_from, name)
@@ -670,6 +705,9 @@ class MeshController(private val context: Context, private val scope: CoroutineS
             }
             is MeshMessage.Text -> addFeed(FeedItem(now, name, message.text, "TEXT", hops, mine = false))
             is MeshMessage.Ack -> Unit
+            is MeshMessage.Looking -> if (message.targetId == router?.nodeId) {
+                if (seekers.put(originId, now) == null) { notify(context.getString(R.string.looking_for_you, name), context.getString(R.string.looking_for_you_body)); applyTransports() }
+            }
         }
     }
 
@@ -693,10 +731,10 @@ class MeshController(private val context: Context, private val scope: CoroutineS
                 addFeed(FeedItem(now, m.name, "$title. $body", "LOST", m.hops, mine = false))
                 notify(title, body)
                 buzz(LEFT_PATTERN)
-                alert(HomeAlert("lost-${m.originId}", title, body, "LOST", m.lat, m.lon, now))
+                alert(HomeAlert("lost-${m.originId}", title, body, "LOST", m.lat.takeIf { hasPosition(m.lat, m.lon) }, m.lon.takeIf { hasPosition(m.lat, m.lon) }, now))
             }
             if (now - m.heardAt < 45_000 && alerts.remove("lost-${m.originId}") != null) lostNotified -= m.originId
-            if (me == null || now - m.heardAt >= 45_000 || now - me.fixTimeMs > 30_000) continue
+            if (me == null || now - m.heardAt >= 45_000 || now - me.fixTimeMs > 30_000 || !hasPosition(m.lat, m.lon)) continue
             val d = GapEstimator.distanceM(me.latitude, me.longitude, m.lat, m.lon)
             val circle = _state.value.circleM.toDouble()
             val out = app.linkfill.core.find.Circle.outside(d, me.accuracyM.toDouble(), m.accuracyM.toDouble(), circle, m.originId in outsideCircle)
@@ -732,9 +770,12 @@ class MeshController(private val context: Context, private val scope: CoroutineS
 
     private fun sendBeacon(r: MeshRouter, now: Long) {
         if (r.crew == null) return
-        val f = _state.value.myFix ?: return
+        val f = _state.value.myFix
+        val lat = f?.latitude ?: 0.0
+        val lon = f?.longitude ?: 0.0
+        val acc = f?.accuracyM?.toInt() ?: 0
         val battery = context.getSystemService(BatteryManager::class.java)?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 0
-        r.originate(MeshMessage.Beacon(f.latitude, f.longitude, f.accuracyM.toInt(), battery.coerceIn(0, 100), _state.value.name, find.rangeable()), now)
+        r.originate(MeshMessage.Beacon(lat, lon, acc, battery.coerceIn(0, 100), _state.value.name, find.rangeable()), now)
     }
 
     private fun onFrame(bytes: ByteArray, rssi: Int, coded: Boolean) {
@@ -755,11 +796,12 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     private fun transmit(r: MeshRouter, frame: ByteArray) {
         val type = TransportSelector.typeOf(frame) ?: return
         val healths = listOf(bleHealth, aware.health, nearby?.health, internet.health).filterNotNull()
-        val kinds = TransportSelector.choose(type, r.risk, healths, _state.value.combineMode)
+        val kinds = TransportSelector.choose(type, r.risk, healths, _state.value.combineMode, risky = r.riskHigh)
         radio.send(frame) // Bluetooth advertising carries every frame; other radios only when chosen
         bleHealth.sent++
         if (TransportKind.WIFI_AWARE in kinds) aware.send(frame)
         if (TransportKind.NEARBY in kinds) nearby?.send(frame)
+        if (type != MeshType.NEIGHBOR) pair?.send(frame) // the Find pair's own link carries every real packet
         if (type != MeshType.NEIGHBOR) {
             _state.update {
                 it.copy(
@@ -781,9 +823,24 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         val responder = _state.value.role != Role.MEMBER
         // Volunteers and police are the backbone: Nearby and fast scanning always on. Members: on demand only
         // when Bluetooth already hears KHOJ phones and something needs a stronger link.
-        val needed = responder || neighbors > 0 && (r.pendingUrgent > 0 || (r.risk ?: 0.0) >= TransportSelector.RISKY || _state.value.combineMode == CombineMode.ALL)
+        val needed = responder || neighbors > 0 && (r.pendingUrgent > 0 || (r.risk ?: 0.0) >= r.riskHigh || _state.value.combineMode == CombineMode.ALL)
         if (needed || findKeepsNearby) nearbyUntil = now + 60_000
-        nearby?.let { if (TransportKind.NEARBY in enabled && !directSharing && now < nearbyUntil) it.start() else it.stop() }
+        // A Find pair gets its own point-to-point link (Wi-Fi Direct capable): the finder dials, the person being found
+        // advertises; when both are finding each other the lower node id advertises so they meet in the middle.
+        val target = find.activeTarget
+        val seeker = seekers.entries.firstOrNull { now - it.value <= 30_000 }?.key
+        val pairWant = when {
+            directSharing -> null
+            target != null && seekers[target]?.let { now - it <= 30_000 } == true && r.nodeId < target -> NearbyPairLink.Role.ADVERTISE to target
+            target != null -> NearbyPairLink.Role.DISCOVER to target
+            seeker != null -> NearbyPairLink.Role.ADVERTISE to seeker
+            else -> null
+        }
+        if (pairWant != null) { nearby?.stop(); pair?.start(pairWant.first, NearbyMeshTransport.nameFor(pairWant.second)) }
+        else {
+            pair?.stop()
+            nearby?.let { if (TransportKind.NEARBY in enabled && !directSharing && now < nearbyUntil) { it.start(); it.ensure() } else it.stop() }
+        }
         radio.setLowLatencyScan(!r.lowPower && (responder || now - lastNeighborMs <= 60_000 || r.pendingUrgent > 0 || lastNeighborMs == 0L && now - startedAt < 60_000), now)
         val url = _state.value.relayUrl
         val relayCrew = r.crew?.crewId ?: 0
@@ -850,6 +907,8 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         _state.update {
             it.copy(
                 now = now, coded = radio.isCoded, mode = r.mode, risk = r.risk, logRows = logRows,
+                predictorStatus = linkAi?.let { ai -> "Link AI on ${ai.backend}: ${"%.3f".format(ai.meanMs)} ms per batch over ${ai.runs} runs; " +
+                    "trained on ${ai.meta.optInt("rows")} real rows, held-out ROC-AUC ${ai.meta.optDouble("model_roc_auc")} (rule ${ai.meta.optDouble("rule_1_minus_pdr2s_roc_auc")})" } ?: it.predictorStatus,
                 members = members.values.sortedBy { m -> m.name },
                 feed = feed.toList(),
                 sosBoard = sosBoard.values.sortedByDescending { a -> a.at },
@@ -860,6 +919,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
                 rewindFrames = rewind.snapshot.size,
                 meetPoint = meetPoint,
                 alerts = alerts.values.sortedByDescending { a -> a.at },
+                seekers = seekers.apply { values.removeAll { now - it > 30_000 } }.keys.associateWith { id -> members[id]?.name ?: "Crew" },
                 rewindError = rewind.error ?: it.rewindError.takeIf { _ -> !rewind.running },
                 neighbors = r.links.neighbors.values.filter { n -> now - n.lastRxMs <= 10_000 }
                     .map { n -> NeighborView(n.id, n.lastRssi, r.links.pdr(n.id, 2_000, now), risks[n.id]) }.sortedByDescending { n -> n.rssi },

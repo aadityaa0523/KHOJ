@@ -35,7 +35,9 @@ class RssiTracker(
     private val medianWindow: Int = 5,
     private val alpha: Double = 0.3,
     private val historyMs: Long = 8_000,
-    private val staleMs: Long = 3_000,
+    private val staleMs: Long = 4_000,
+    /** A reading counts as fully fresh this long; frames arrive in bursts with 1-3 s gaps when the radio is shared (measured with Nearby running). */
+    private val freshMs: Long = 2_000,
     private val bands: ProximityBands = ProximityBands(),
 ) {
     private class P(val t: Long, val raw: Int, val filtered: Double)
@@ -71,7 +73,7 @@ class RssiTracker(
             slopeSe > 0 && slope / slopeSe < -2.5 && slope < -0.4 -> Trend.WORSENING
             else -> Trend.STEADY
         }
-        val recency = (1.0 - age.toDouble() / staleMs).coerceIn(0.0, 1.0)
+        val recency = (1.0 - (age - freshMs).toDouble() / (staleMs - freshMs)).coerceIn(0.0, 1.0)
         val count = (points.size / 8.0).coerceIn(0.0, 1.0)
         val calm = (1.0 - std / 10.0).coerceIn(0.0, 1.0)
         val confidence = recency * (0.4 + 0.3 * count + 0.3 * calm)

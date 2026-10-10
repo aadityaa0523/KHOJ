@@ -1,0 +1,37 @@
+{
+ "features": [
+  "rssi_median_2s",
+  "rssi_min_2s",
+  "rssi_std_10s",
+  "rssi_slope_dbps",
+  "rssi_drop",
+  "pdr_0_5s",
+  "pdr_2s",
+  "pdr_10s",
+  "consecutive_misses",
+  "since_last_s",
+  "queue_depth"
+ ],
+ "batch": 16,
+ "target": "lost_5s: no frame from this neighbour in the next 5 s",
+ "trained_at": "2026-10-10T18:45",
+ "rows": 35111,
+ "sessions": 10,
+ "phones": [
+  "10BFAX1BU80010U"
+ ],
+ "data": "real iQOO I2501 field logs (link_log.csv)",
+ "model_roc_auc": 0.753,
+ "model_pr_auc": 0.123,
+ "rule_1_minus_pdr2s_roc_auc": 0.618,
+ "rule_pr_auc": 0.038,
+ "base_rate": 0.0283,
+ "medium_threshold": 0.0265,
+ "medium_recall": 0.699,
+ "medium_precision": 0.057,
+ "medium_flagged_share": 0.347,
+ "high_threshold": 0.0506,
+ "high_recall": 0.459,
+ "high_precision": 0.085,
+ "high_flagged_share": 0.153
+}

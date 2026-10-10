@@ -128,7 +128,7 @@ class MeshRouter(
         val packet = MeshPacket(type, ttl, 0, nodeId, 0, key.crewId, nodeId, id, now / 1000, key.seal(bare, plain))
         seen[packet.key] = now
         stats.originated++
-        val priority = when (type) { MeshType.SOS, MeshType.ACK -> 0; MeshType.RALLY, MeshType.TEXT -> 1; else -> 3 }
+        val priority = when (type) { MeshType.SOS, MeshType.ACK -> 0; MeshType.RALLY, MeshType.TEXT, MeshType.LOOKING -> 1; else -> 3 }
         if (type == MeshType.BEACON) queue.removeAll { !it.isRelay && it.packet.type == MeshType.BEACON } // only the newest position matters
         enqueue(Out(packet, mode.repeats, now, priority, isRelay = false))
         if (type == MeshType.SOS || type == MeshType.RALLY) urgent[id] = Urgent(packet, 1, now)
@@ -174,8 +174,10 @@ class MeshRouter(
     fun onFrame(bytes: ByteArray, rssi: Int, coded: Boolean, now: Long, via: TransportKind = TransportKind.BLE) {
         val p = MeshPacket.decode(bytes) ?: run { stats.malformed++; return }
         stats.framesIn++
-        if (via == TransportKind.BLE && !links.onFrame(p.relayId, p.linkSeq, rssi, coded, now)) { stats.repeatedFrames++; return }
+        // Every copy feeds the signal tracker: each frame goes out on 1M and LE Coded at once, and if the Coded copy is
+        // de-duplicated first, Find (which only trusts 1M RSSI) would starve.
         if (via == TransportKind.BLE) rssiObserver?.invoke(p.relayId, rssi, coded, now)
+        if (via == TransportKind.BLE && !links.onFrame(p.relayId, p.linkSeq, rssi, coded, now)) { stats.repeatedFrames++; return }
         if (via != TransportKind.INTERNET) offerCarried(p.relayId, p.fromLowPower, now)
         if (p.type == MeshType.NEIGHBOR || p.originId == nodeId) return
         val k = p.key
@@ -270,9 +272,24 @@ class MeshRouter(
         if (now - lastModeUpdate >= 1_000) { lastModeUpdate = now; updateMode(now) }
     }
 
-    /** Neighbour risk per active neighbour (model if loaded, else 1 - PDR over 2 s). */
-    fun neighborRisks(now: Long): Map<Int, Double> = links.neighbors.values.filter { now - it.lastRxMs <= 10_000 }.associate { n ->
-        n.id to (predictor?.predict(links.features(n.id, now, queue.size, mode.coded)) ?: (1 - links.pdr(n.id, 2_000, now)))
+    /**
+     * Optional batch model with the same inputs as [predictor] (one LinkFeatures.ALL row per neighbour, one probability
+     * out each). The app sets it to the NPU-backed Link AI; when it is null or fails, [predictor] runs on the CPU.
+     */
+    var riskModel: ((List<DoubleArray>) -> DoubleArray?)? = null
+    /** Risk at which the link mode steps up; the app sets them from the bundled model's held-out thresholds. */
+    var riskMedium = 0.3
+    var riskHigh = 0.6
+
+    /** Neighbour risk per active neighbour (batch model, else the CPU predictor, else 1 - PDR over 2 s). */
+    fun neighborRisks(now: Long): Map<Int, Double> {
+        val active = links.neighbors.values.filter { now - it.lastRxMs <= 10_000 }
+        if (active.isEmpty()) return emptyMap()
+        val rows = active.map { links.features(it.id, now, queue.size, mode.coded) }
+        val p = riskModel?.invoke(rows)?.takeIf { it.size == rows.size }
+            ?: predictor?.let { pr -> DoubleArray(rows.size) { pr.predict(rows[it]) } }
+            ?: DoubleArray(rows.size) { 1 - links.pdr(active[it].id, 2_000, now) }
+        return active.indices.associate { active[it].id to p[it] }
     }
 
     /**
@@ -284,8 +301,8 @@ class MeshRouter(
         val r = if (risks.isEmpty()) 1.0 else risks[risks.size / 2]
         risk = if (risks.isEmpty()) null else r
         val want = when {
-            r >= 0.6 && config.codedSupported -> LinkMode.HIGH
-            r >= 0.3 -> LinkMode.MEDIUM
+            r >= riskHigh && config.codedSupported -> LinkMode.HIGH
+            r >= riskMedium -> LinkMode.MEDIUM
             else -> LinkMode.NORMAL
         }
         if (want.ordinal >= mode.ordinal) { mode = want; lowRiskSince = now }
