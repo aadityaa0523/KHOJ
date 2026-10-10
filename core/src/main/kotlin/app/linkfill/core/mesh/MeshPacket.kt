@@ -13,7 +13,8 @@ enum class MeshType(val code: Int) {
     NEIGHBOR(6), // unencrypted filler so neighbours can measure link quality when there is nothing else to send
     // Public messages (see PublicMessage): not sealed with a crew key.
     FOUND(7), FOUND_ACK(8), PUBLIC_SOS(9), RESPOND(10), OFFICIAL(11), FOUND_NOTICE(12),
-    LOOKING(13); // crew: "I am trying to find <member>", so they can navigate back to me
+    LOOKING(13), // crew: "I am trying to find <member>", so they can navigate back to me
+    SUMMARY(14); // anti-entropy cache summary for store-carry-forward healing (Phase 5)
 
     companion object { fun of(code: Int) = entries.firstOrNull { it.code == code } }
 }

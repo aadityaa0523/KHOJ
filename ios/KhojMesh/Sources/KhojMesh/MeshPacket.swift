@@ -4,8 +4,9 @@ import Foundation
 public enum MeshType: UInt8 {
     case beacon = 1, sos, rally, text, ack, neighbor
     case found, foundAck, publicSos, respond, official, foundNotice
+    case looking = 13, summary = 14
 
-    public var isPublic: Bool { rawValue >= MeshType.found.rawValue }
+    public var isPublic: Bool { rawValue >= MeshType.found.rawValue && rawValue <= MeshType.foundNotice.rawValue }
 }
 
 /// One frame on the air or on a GATT link: 29-byte header plus body (at most 200 bytes in all).

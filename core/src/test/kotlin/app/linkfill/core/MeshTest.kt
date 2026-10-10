@@ -12,7 +12,10 @@ import app.linkfill.core.mesh.MeshRouter
 import app.linkfill.core.mesh.MeshType
 import app.linkfill.core.mesh.Metrics
 import app.linkfill.core.sim.LinkDataset
+import app.linkfill.core.mesh.PublicMessage
+import app.linkfill.core.mesh.SosKind
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -24,9 +27,11 @@ class MeshTest {
 
     private class Inbox : MeshListener {
         val got = mutableListOf<Pair<MeshMessage, Int>>()
+        val publicGot = mutableListOf<Pair<PublicMessage, Int>>()
         val acks = mutableListOf<Int>()
         override fun onMessage(originId: Int, message: MeshMessage, hops: Int, rssi: Int, ageS: Long) { got += message to hops }
         override fun onAcked(packetId: Int, byOriginId: Int) { acks += packetId }
+        override fun onPublic(packet: MeshPacket, message: PublicMessage, hops: Int, rssi: Int, ageS: Long) { publicGot += message to hops }
     }
 
     /** A chain of phones where each hears only its neighbours: 0 - 1 - 2 - ... */
@@ -430,5 +435,194 @@ class MeshTest {
         assertEquals(MeshType.SOS, MeshPacket.decode(sosFrame!!)!!.type)
 
         assertNull("filler must be suppressed while urgent message is pending retry", r.nextFrame(t0 + 100, allowFiller = true))
+    }
+
+    @Test fun cacheSummaryBloomAndExactEncodingRoundTrip() {
+        val keys = (1L..32L).map { 1000L * it }
+        val bloomSummary = app.linkfill.core.mesh.CacheSummary(
+            epoch = 42,
+            count = keys.size,
+            isExact = false,
+            bloom = app.linkfill.core.mesh.CacheSummary.buildBloom(keys),
+            digest = app.linkfill.core.mesh.CacheSummary.computeDigest(keys),
+            oldestTimeS = 100,
+            newestTimeS = 200,
+        )
+        val encodedBloom = app.linkfill.core.mesh.CacheSummary.encode(bloomSummary)
+        val decodedBloom = app.linkfill.core.mesh.CacheSummary.decode(encodedBloom)
+        assertEquals(bloomSummary, decodedBloom)
+        assertTrue(app.linkfill.core.mesh.CacheSummary.bloomContains(decodedBloom!!.bloom, 1000L))
+        assertFalse(app.linkfill.core.mesh.CacheSummary.bloomContains(decodedBloom.bloom, 999999L))
+
+        val exactSummary = app.linkfill.core.mesh.CacheSummary(
+            epoch = 43,
+            count = keys.size,
+            isExact = true,
+            bloom = ByteArray(0),
+            digest = app.linkfill.core.mesh.CacheSummary.computeDigest(keys),
+            oldestTimeS = 100,
+            newestTimeS = 200,
+            exactKeys = keys.map { app.linkfill.core.mesh.CacheSummary.truncateKey(it) }.toIntArray()
+        )
+        val encodedExact = app.linkfill.core.mesh.CacheSummary.encode(exactSummary)
+        val decodedExact = app.linkfill.core.mesh.CacheSummary.decode(encodedExact)
+        assertEquals(exactSummary, decodedExact)
+    }
+
+    @Test fun antiEntropyReconciliationFindsMissingItemsWithLowerBytes() {
+        val crew = CrewKey.create()
+        for (diff in listOf(0, 1, 8, 16)) {
+            val inboxA = Inbox()
+            val inboxB = Inbox()
+            val rA = MeshRouter(1, crew, MeshConfig(), Random(1), inboxA)
+            val rB = MeshRouter(2, crew, MeshConfig(), Random(2), inboxB)
+
+            var totalBytesSent = 0
+            for (i in 1..32) {
+                val (st, sb) = PublicMessage.encode(PublicMessage.PublicSos(SosKind.MANUAL, 25.0, 82.0, "alert $i"))
+                val packet = MeshPacket(st, 3, 0, 1000 + i, 1, 0, 1000 + i, 1, t0 / 1000, sb)
+                rA.onFrame(MeshPacket.encode(packet), -70, false, t0)
+                if (i <= 32 - diff) {
+                    rB.onFrame(MeshPacket.encode(packet), -70, false, t0)
+                }
+            }
+            while (rA.nextFrame(t0 + 2000, allowFiller = false) != null) {}
+            while (rB.nextFrame(t0 + 2000, allowFiller = false) != null) {}
+            inboxA.publicGot.clear()
+            inboxB.publicGot.clear()
+
+            var t = t0 + 70_000
+            val bFrame = rB.nextFrame(t, allowFiller = true)
+            assertNotNull(bFrame)
+            totalBytesSent += bFrame!!.size
+            rA.onFrame(bFrame, -70, false, t)
+
+            for (step in 1..30) {
+                t += 250
+                val fA = rA.nextFrame(t, allowFiller = false)
+                if (fA != null) {
+                    totalBytesSent += fA.size
+                    rB.onFrame(fA, -70, false, t)
+                }
+                val fB = rB.nextFrame(t, allowFiller = false)
+                if (fB != null) {
+                    totalBytesSent += fB.size
+                    rA.onFrame(fB, -70, false, t)
+                }
+                if (inboxB.publicGot.size == diff && rA.queueSize == 0 && rB.queueSize == 0) break
+            }
+
+            assertEquals("All $diff missing items must be delivered to B", diff, inboxB.publicGot.size)
+            if (diff == 0) {
+                assertTrue("Reconciliation for 0 diff ($totalBytesSent B) should only be summary frames", totalBytesSent <= 300)
+            } else if (diff == 1) {
+                assertTrue("Reconciliation for 1 diff ($totalBytesSent B) should be under 800 B (vs blind multi-packet offers >= 1280 B)", totalBytesSent <= 800)
+            }
+        }
+    }
+
+    @Test fun forcedBloomFalsePositiveTriggersExactSummaryReconciliation() {
+        val crew = CrewKey.create()
+        val inboxB = Inbox()
+        val rA = MeshRouter(1, crew, MeshConfig(), Random(1), object : MeshListener {})
+        val rB = MeshRouter(2, crew, MeshConfig(), Random(2), inboxB)
+
+        val id = rA.originate(MeshMessage.Sos(25.0, 82.0, "sos"), t0)
+        val initialSos = rA.nextFrame(t0, allowFiller = false)
+        assertNotNull(initialSos)
+
+        val allOnesBloom = ByteArray(app.linkfill.core.mesh.CacheSummary.BLOOM_BYTES) { 0xFF.toByte() }
+        val fakeSummary = app.linkfill.core.mesh.CacheSummary(
+            epoch = 1,
+            count = 1,
+            isExact = false,
+            bloom = allOnesBloom,
+            digest = ByteArray(app.linkfill.core.mesh.CacheSummary.DIGEST_BYTES),
+            oldestTimeS = t0 / 1000,
+            newestTimeS = t0 / 1000,
+        )
+        val fakePacket = MeshPacket(
+            MeshType.SUMMARY, 1, 0, 2, 1, 0, 2, 50, t0 / 1000,
+            app.linkfill.core.mesh.CacheSummary.encode(fakeSummary)
+        )
+
+        rA.onFrame(MeshPacket.encode(fakePacket), -70, false, t0 + 2000)
+
+        val exactFrame = rA.nextFrame(t0 + 2000, allowFiller = false)
+        assertNotNull(exactFrame)
+        val exactPacket = MeshPacket.decode(exactFrame!!)!!
+        assertEquals(MeshType.SUMMARY, exactPacket.type)
+        val decodedExact = app.linkfill.core.mesh.CacheSummary.decode(exactPacket.body)!!
+        assertTrue(decodedExact.isExact)
+
+        rB.onFrame(exactFrame, -70, false, t0 + 2100)
+        val bReply = rB.nextFrame(t0 + 2200, allowFiller = false)
+        assertNotNull(bReply)
+        rA.onFrame(bReply!!, -70, false, t0 + 2300)
+
+        var offer: ByteArray? = null
+        for (step in 1..6) {
+            val f = rA.nextFrame(t0 + 2300 + step * 250, allowFiller = false)
+            if (f != null && MeshPacket.decode(f)?.type == MeshType.SOS) {
+                offer = f
+                break
+            }
+        }
+        assertNotNull(offer)
+        rB.onFrame(offer!!, -70, false, t0 + 4000)
+
+        assertEquals("B must receive the missing SOS despite initial Bloom false positive", 1, inboxB.got.size)
+    }
+
+    @Test fun resurrectionPreventedAfterAck() {
+        val crew = CrewKey.create()
+        val inboxA = Inbox()
+        val inboxB = Inbox()
+        val rA = MeshRouter(1, crew, MeshConfig(), Random(1), inboxA)
+        val rB = MeshRouter(2, crew, MeshConfig(), Random(2), inboxB)
+
+        val id = rA.originate(MeshMessage.Sos(25.0, 82.0, "help"), t0)
+        val sosFrame = rA.nextFrame(t0, allowFiller = false)!!
+
+        rB.onFrame(sosFrame, -70, false, t0 + 50)
+        assertEquals(1, inboxB.got.size)
+
+        val ackFrame = rB.nextFrame(t0 + 50, allowFiller = false)!!
+        rA.onFrame(ackFrame, -70, false, t0 + 100)
+        assertTrue(id in inboxA.acks)
+
+        // Drain any pending relays from initial exchange
+        while (rB.nextFrame(t0 + 2000, allowFiller = false) != null) {}
+        while (rA.nextFrame(t0 + 2000, allowFiller = false) != null) {}
+
+        val tReturn = t0 + 180_000
+        rA.onFrame(sosFrame, -70, false, tReturn)
+        rB.onFrame(sosFrame, -70, false, tReturn)
+
+        assertEquals("Node B must not re-deliver old SOS", 1, inboxB.got.size)
+        assertEquals("Node A must not deliver its own acknowledged SOS", 0, inboxA.got.size)
+        val nextFrameAfterReturn = rB.nextFrame(tReturn + 500, allowFiller = false)
+        if (nextFrameAfterReturn != null) {
+            val decoded = MeshPacket.decode(nextFrameAfterReturn)!!
+            org.junit.Assert.assertNotEquals("Node B must not relay the old acknowledged SOS", MeshType.SOS, decoded.type)
+            assertEquals("Any frame sent on new contact must be SUMMARY", MeshType.SUMMARY, decoded.type)
+        }
+    }
+
+    @Test fun custodyByOverhearingStretchesUrgentRetrySchedule() {
+        val crew = CrewKey.create()
+        val rA = MeshRouter(1, crew, MeshConfig(), Random(1), object : MeshListener {})
+
+        val packetId = rA.originate(MeshMessage.Sos(25.0, 82.0, "help"), t0)
+        assertEquals(1, rA.pendingUrgent)
+
+        val bare = MeshPacket(MeshType.SOS, 3, 0, 1, packetId, crew.crewId, 1, packetId, t0 / 1000, ByteArray(0))
+        val relayedBy2 = MeshPacket(MeshType.SOS, 2, 1, 2, 10, crew.crewId, 1, packetId, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Sos(25.0, 82.0, "help")).second))
+        rA.onFrame(MeshPacket.encode(relayedBy2), -70, false, t0 + 20)
+
+        assertEquals(1, rA.stats.custodiesObserved)
+
+        rA.tick(t0 + 1_500)
+        assertEquals("Must not retry within 1.5s once custody is overheard", 0, rA.stats.urgentResends)
     }
 }

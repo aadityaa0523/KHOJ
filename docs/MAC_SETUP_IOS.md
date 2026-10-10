@@ -61,6 +61,7 @@ swift test
 | Public SOS, found reports, roles | `core/src/main/kotlin/app/linkfill/core/mesh/PublicMessages.kt` |
 | Crew key, AES-GCM | `core/src/main/kotlin/app/linkfill/core/mesh/CrewKey.kt` |
 | Routing, carry-forward, low power | `core/src/main/kotlin/app/linkfill/core/mesh/MeshRouter.kt` |
+| Cache summaries & anti-entropy | `core/src/main/kotlin/app/linkfill/core/mesh/CacheSummary.kt` |
 | GATT fragmentation | `core/src/main/kotlin/app/linkfill/core/mesh/GattFraming.kt` |
 | Android side of the GATT link | `app/src/main/java/app/linkfill/mesh/GattBearer.kt` |
 | Android SOS, siren, circle alarm | `app/src/main/java/app/linkfill/mesh/MeshController.kt`, `Siren.kt` |

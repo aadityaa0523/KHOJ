@@ -69,6 +69,7 @@ class MeshStats {
     var relayed = 0; var relayScheduled = 0; var suppressed = 0; var foreignRelayed = 0; var queueDropped = 0
     var originated = 0; var urgentResends = 0; var acksReceived = 0
     var publicDelivered = 0; var publicRateLimited = 0
+    var summariesSent = 0; var summariesReceived = 0; var tombstonesHit = 0; var custodiesObserved = 0
 }
 
 /**
@@ -120,7 +121,7 @@ class MeshRouter(
     }
 
     /** Resends reuse the original encrypted packet unchanged: a new timestamp under the same nonce would break AES-GCM. */
-    private class Urgent(val packet: MeshPacket, var sends: Int, var nextRetryAt: Long)
+    private class Urgent(val packet: MeshPacket, var sends: Int, var nextRetryAt: Long, var hasCustody: Boolean = false)
 
     private val queue = ArrayList<Out>()
     private val seen = LinkedHashMap<Long, Long>()
@@ -128,6 +129,7 @@ class MeshRouter(
     private val urgent = LinkedHashMap<Int, Urgent>()
     private val acked = mutableSetOf<Long>()
     private val publicTimes = HashMap<Int, ArrayDeque<Long>>()
+    private val tombstones = LinkedHashMap<Long, Long>()
 
     /** Urgent packets kept for later arrivals, ready to transmit, with the time each was stored. */
     private class Carried(val packet: MeshPacket, val at: Long)
@@ -142,8 +144,16 @@ class MeshRouter(
     private var lowRiskSince = 0L
     private var lastModeUpdate = 0L
 
+    private var cacheEpoch: Short = 1
+    private var summaryPeriodMs = 30_000L
+    private var lastSummaryBroadcastMs = 0L
+    private var lastSummarySentMs = 0L
+    private var lastExactSummarySentMs = 0L
+    private var lastNow = 0L
+
     /** Sends a crew message. SOS and RALLY are repeated until a crew member acknowledges them. Returns the packet id. */
     fun originate(message: MeshMessage, now: Long, ttl: Int = -1): Int {
+        lastNow = now
         val key = crew ?: error("join a crew before sending")
         val (type, plain) = MeshMessage.encode(message)
         val id = ++packetSeq
@@ -181,6 +191,7 @@ class MeshRouter(
      * exponential backoff, up to 6 times, until [cancelRepeats] is called.
      */
     fun originatePublic(message: PublicMessage, now: Long, crewId: Int = 0, ttl: Int = -1): Int {
+        lastNow = now
         val (type, body) = PublicMessage.encode(message)
         val id = ++packetSeq
         val policy = config.densityPolicy(links.density(now))
@@ -205,7 +216,11 @@ class MeshRouter(
         return id
     }
 
-    fun cancelRepeats(packetId: Int) { urgent.remove(packetId) }
+    fun cancelRepeats(packetId: Int) {
+        urgent.remove(packetId)
+        val k = (nodeId.toLong() shl 32) or (packetId.toLong() and 0xFFFFFFFFL)
+        addTombstone(k, lastNow.coerceAtLeast(System.currentTimeMillis()))
+    }
 
     /** At most 5 public packets per 10 s from one sender, so one phone cannot flood volunteers' screens. */
     private fun publicAllowed(originId: Int, now: Long): Boolean {
@@ -218,21 +233,43 @@ class MeshRouter(
     }
 
     fun onFrame(bytes: ByteArray, rssi: Int, coded: Boolean, now: Long, via: TransportKind = TransportKind.BLE) {
+        lastNow = now
         val p = MeshPacket.decode(bytes) ?: run { stats.malformed++; return }
         stats.framesIn++
         // Every copy feeds the signal tracker: each frame goes out on 1M and LE Coded at once, and if the Coded copy is
         // de-duplicated first, Find (which only trusts 1M RSSI) would starve.
         if (via == TransportKind.BLE) rssiObserver?.invoke(p.relayId, rssi, coded, now)
         if (via == TransportKind.BLE && !links.onFrame(p.relayId, p.linkSeq, rssi, coded, now)) { stats.repeatedFrames++; return }
+        if (p.type == MeshType.SUMMARY) {
+            handleSummary(p, now)
+            return
+        }
         if (via != TransportKind.INTERNET) offerCarried(p.relayId, p.fromLowPower, now)
-        if (p.type == MeshType.NEIGHBOR || p.originId == nodeId) return
+        if (p.type == MeshType.NEIGHBOR) return
+        if (p.originId == nodeId) {
+            if (p.relayId != nodeId) {
+                // Overheard another relay transmitting our packet: mark custody and stretch retries
+                val u = urgent[p.packetId]
+                if (u != null && !u.hasCustody) {
+                    u.hasCustody = true
+                    stats.custodiesObserved++
+                    val shift = (u.sends - 1).coerceIn(0, STRETCHED_RETRIES.lastIndex)
+                    val baseDelay = STRETCHED_RETRIES[shift]
+                    val jitter = (random.nextDouble(-0.2, 0.2) * baseDelay).toLong()
+                    u.nextRetryAt = maxOf(u.nextRetryAt, now + baseDelay + jitter)
+                }
+            }
+            return
+        }
         val k = p.key
         if (seen.containsKey(k) || longSeen.containsKey(k)) {
             stats.duplicates++
+            if (tombstones.containsKey(k)) stats.tombstonesHit++
             pendingRelay[k]?.let { if (p.relayId != it.firstRelay) it.otherRelays += p.relayId }
             return
         }
         seen[k] = now
+        longSeen[k] = now
         val ageS = now / 1000 - p.originTimeS
         if (ageS > config.maxAgeS || ageS < -60) { stats.tooOld++; return }
 
@@ -241,6 +278,11 @@ class MeshRouter(
             if (!publicAllowed(p.originId, now)) { stats.publicRateLimited++; return }
             val m = PublicMessage.decode(p.type, p.body) ?: run { stats.malformed++; return }
             stats.publicDelivered++
+            when (m) {
+                is PublicMessage.FoundAck -> addTombstone(m.reportId, now)
+                is PublicMessage.Respond -> addTombstone((m.sosOrigin.toLong() shl 32) or (m.sosPacket.toLong() and 0xFFFFFFFFL), now)
+                else -> {}
+            }
             listener.onPublic(p, m, p.hops, rssi, ageS)
         } else if (myCrew != null && p.crewId == myCrew.crewId) {
             val plain = myCrew.open(p)
@@ -249,8 +291,8 @@ class MeshRouter(
         } else stats.foreignRelayed++
 
         if (via != TransportKind.INTERNET) bridge?.invoke(bytes, p)
-        if (!lowPower) carry(if (p.ttl > 0) p.relayed(nodeId, 0) else p, now)
-        if (p.ttl > 0 && !lowPower) {
+        if (!lowPower && !tombstones.containsKey(k)) carry(if (p.ttl > 0) p.relayed(nodeId, 0) else p, now)
+        if (p.ttl > 0 && !lowPower && !tombstones.containsKey(k)) {
             val policy = config.densityPolicy(links.density(now))
             val urgentType = p.type in setOf(MeshType.SOS, MeshType.ACK, MeshType.PUBLIC_SOS, MeshType.OFFICIAL, MeshType.FOUND, MeshType.FOUND_ACK, MeshType.RESPOND)
             if (!urgentType && random.nextDouble() >= policy.relayProbability) return
@@ -285,9 +327,11 @@ class MeshRouter(
     private fun deliver(p: MeshPacket, m: MeshMessage, rssi: Int, ageS: Long, now: Long) {
         stats.delivered++
         if (m is MeshMessage.Ack) {
+            val targetKey = (m.originId.toLong() shl 32) or (m.packetId.toLong() and 0xFFFFFFFFL)
+            addTombstone(targetKey, now)
             if (m.originId == nodeId) {
                 stats.acksReceived++
-                if (acked.add((m.originId.toLong() shl 32) or (m.packetId.toLong() and 0xFFFFFFFFL))) listener.onAcked(m.packetId, p.originId)
+                if (acked.add(targetKey)) listener.onAcked(m.packetId, p.originId)
                 urgent.remove(m.packetId)
             }
             return
@@ -356,6 +400,7 @@ class MeshRouter(
     }
 
     fun tick(now: Long) {
+        lastNow = now
         for (u in urgent.values.toList()) {
             if (now >= u.nextRetryAt) {
                 if (u.sends >= config.urgentMaxSends) { urgent.remove(u.packet.packetId); continue }
@@ -364,7 +409,11 @@ class MeshRouter(
                     ?: enqueue(Out(u.packet, mode.repeats, now, 0, isRelay = false))
                 u.sends++
                 val shift = (u.sends - 1).coerceIn(0, 5)
-                val baseDelay = (1_000L shl shift).coerceAtMost(32_000L)
+                val baseDelay = if (u.hasCustody) {
+                    STRETCHED_RETRIES[(u.sends - 1).coerceIn(0, STRETCHED_RETRIES.lastIndex)]
+                } else {
+                    (1_000L shl shift).coerceAtMost(32_000L)
+                }
                 val jitter = (random.nextDouble(-0.2, 0.2) * baseDelay).toLong()
                 u.nextRetryAt = now + baseDelay + jitter
                 stats.urgentResends++
@@ -375,10 +424,18 @@ class MeshRouter(
         val maxAgeMs = config.maxAgeS * 1000
         longSeen.entries.removeIf { now - it.value > maxAgeMs + 120_000L }
         carried.values.removeAll { now - it.packet.originTimeS * 1000 > maxAgeMs }
+        tombstones.entries.removeIf { now > it.value }
         lastHeardFrom.values.removeAll { now - it > config.newNeighborGapMs * 5 }
         lastOfferTo.values.removeAll { now - it > config.newNeighborGapMs * 5 }
         links.prune(now)
         if (now - lastModeUpdate >= 1_000) { lastModeUpdate = now; updateMode(now) }
+        if (!lowPower && carried.isNotEmpty()) {
+            if (now - lastSummaryBroadcastMs >= summaryPeriodMs) {
+                lastSummaryBroadcastMs = now
+                sendSummary(now)
+                summaryPeriodMs = (summaryPeriodMs * 2).coerceAtMost(120_000L)
+            }
+        }
     }
 
     /**
@@ -423,47 +480,169 @@ class MeshRouter(
 
     /** Keeps urgent packets (help requests, found reports, acknowledgements, official alerts, meeting points). */
     private fun carry(p: MeshPacket, now: Long) {
-        if (p.type !in CARRY_TYPES) return
+        if (p.type !in CARRY_TYPES || tombstones.containsKey(p.key)) return
         longSeen[p.key] = now
-        carried[p.key] = Carried(p, now)
+        val isNew = carried.put(p.key, Carried(p, now)) == null
+        if (isNew) {
+            cacheEpoch = ((cacheEpoch + 1) and 0x7FFF).toShort()
+            summaryPeriodMs = 30_000L
+        }
         while (carried.size > config.carryMax) carried.remove(carried.keys.first())
     }
 
     /**
-     * Healing across gaps in the crowd. Managed flooding only reaches phones in range at that moment; people move,
-     * so every phone carries urgent packets for their lifetime and offers them when (a) a phone it has not heard for
-     * a minute appears (someone walked into range, or a split group rejoined), or (b) a low-power member wakes and
-     * transmits (friend role): then everything stored since its previous frame. Offers go out as relays, so other
-     * carriers offering the same packet suppress each other, and phones that already have it drop it as a duplicate.
+     * Healing across gaps in the crowd. Exchanging anti-entropy cache summaries (Phase 5) replaces blind
+     * multi-packet offers. Summaries are sent on meeting a new neighbor or low-power member, and Trickle-broadcast
+     * every 30-120 s while carrying packets.
      */
     private fun offerCarried(from: Int, fromLowPower: Boolean, now: Long) {
         val prev = lastHeardFrom.put(from, now)
         if (lowPower || carried.isEmpty() || from == nodeId) return
-        val picks = if (fromLowPower) {
+        if (fromLowPower) {
             if (now - (lastOfferTo[from] ?: 0L) < config.offerEveryMs) return
             stats.friendPolls++
+            lastOfferTo[from] = now
             val since = (prev ?: 0L) - 1_000
-            carried.values.filter { it.at >= since }
+            sendSummary(now)
+            for (c in carried.values.filter { it.at >= since }.takeLast(config.offerMax)) {
+                offerPacket(c.packet, from, now)
+            }
         } else {
             if (prev != null && now - prev < config.newNeighborGapMs) return
             if (now - lastNewcomerOffer < config.offerEveryMs) return
             lastNewcomerOffer = now
-            carried.values.toList()
-        }
-        lastOfferTo[from] = now
-        for (c in picks.takeLast(config.offerMax)) {
-            if (queue.any { it.packet.key == c.packet.key }) continue
-            val out = Out(c.packet, 1, now + config.relayBaseMs + random.nextLong(config.relayJitterMs * 2 + 1), 1, isRelay = true)
-            out.firstRelay = from
-            pendingRelay[c.packet.key] = out
-            stats.carriedOffered++
-            enqueue(out)
+            lastOfferTo[from] = now
+            sendSummary(now)
         }
     }
+
+    private fun sendSummary(now: Long) {
+        if (lowPower) return
+        val summary = if (carried.isEmpty()) {
+            CacheSummary(cacheEpoch, 0, false, ByteArray(CacheSummary.BLOOM_BYTES), CacheSummary.computeDigest(emptyList()), 0L, 0L)
+        } else {
+            CacheSummary.fromPackets(cacheEpoch, carried.values.map { it.packet }, isExact = false)
+        }
+        val body = CacheSummary.encode(summary)
+        val packet = MeshPacket(
+            type = MeshType.SUMMARY,
+            ttl = 1,
+            hops = 0,
+            relayId = nodeId,
+            linkSeq = 0,
+            crewId = 0,
+            originId = nodeId,
+            packetId = ++packetSeq,
+            originTimeS = now / 1000,
+            body = body,
+        )
+        stats.summariesSent++
+        enqueue(Out(packet, 1, now, 1, isRelay = false))
+    }
+
+    private fun sendExactSummary(now: Long) {
+        if (lowPower || carried.isEmpty()) return
+        val summary = CacheSummary.fromPackets(cacheEpoch, carried.values.map { it.packet }, isExact = true)
+        val body = CacheSummary.encode(summary)
+        val packet = MeshPacket(
+            type = MeshType.SUMMARY,
+            ttl = 1,
+            hops = 0,
+            relayId = nodeId,
+            linkSeq = 0,
+            crewId = 0,
+            originId = nodeId,
+            packetId = ++packetSeq,
+            originTimeS = now / 1000,
+            body = body,
+        )
+        stats.summariesSent++
+        enqueue(Out(packet, 1, now, 1, isRelay = false))
+    }
+
+    private fun offerPacket(packet: MeshPacket, requestedByRelay: Int, now: Long) {
+        if (tombstones.containsKey(packet.key)) return
+        if (queue.any { it.packet.key == packet.key }) return
+        val out = Out(packet, 1, now + config.relayBaseMs + random.nextLong(config.relayJitterMs * 2 + 1), 1, isRelay = true)
+        out.firstRelay = requestedByRelay
+        pendingRelay[packet.key] = out
+        stats.carriedOffered++
+        enqueue(out)
+    }
+
+    private fun handleSummary(p: MeshPacket, now: Long) {
+        if (lowPower) return
+        val s = CacheSummary.decode(p.body) ?: run { stats.malformed++; return }
+        stats.summariesReceived++
+
+        if (carried.isEmpty()) {
+            if (s.count > 0 && now - lastSummarySentMs >= 5_000L) {
+                lastSummarySentMs = now
+                sendSummary(now)
+            }
+            return
+        }
+
+        if (s.isExact) {
+            val remoteKeys = s.exactKeys.toSet()
+            for (c in carried.values) {
+                if (tombstones.containsKey(c.packet.key)) continue
+                val tk = CacheSummary.truncateKey(c.packet.key)
+                if (tk !in remoteKeys) {
+                    offerPacket(c.packet, p.relayId, now)
+                }
+            }
+            val ourKeys = carried.values.map { CacheSummary.truncateKey(it.packet.key) }.toSet()
+            val theyHaveWhatWeLack = s.exactKeys.any { it !in ourKeys }
+            if (theyHaveWhatWeLack && now - lastExactSummarySentMs >= 5_000L) {
+                lastExactSummarySentMs = now
+                sendExactSummary(now)
+            }
+        } else {
+            var missingCount = 0
+            for (c in carried.values) {
+                if (tombstones.containsKey(c.packet.key)) continue
+                if (!CacheSummary.bloomContains(s.bloom, c.packet.key)) {
+                    missingCount++
+                    offerPacket(c.packet, p.relayId, now)
+                }
+            }
+            val ourDigest = CacheSummary.computeDigest(carried.keys)
+            val digestsMatch = ourDigest.contentEquals(s.digest)
+            if (missingCount == 0 && !digestsMatch) {
+                if (now - lastExactSummarySentMs >= 5_000L) {
+                    lastExactSummarySentMs = now
+                    sendExactSummary(now)
+                }
+            } else if (missingCount > 0 || s.count > carried.size || !digestsMatch) {
+                if (now - lastSummarySentMs >= 5_000L) {
+                    lastSummarySentMs = now
+                    sendSummary(now)
+                }
+            }
+        }
+    }
+
+    fun addTombstone(key: Long, now: Long) {
+        val expiry = now + (config.maxAgeS + 300L) * 1000L
+        tombstones[key] = expiry
+        pendingRelay.remove(key)
+        queue.removeAll { it.isRelay && it.packet.key == key }
+        val pid = (key and 0xFFFFFFFFL).toInt()
+        val oid = (key ushr 32).toInt()
+        if (oid == nodeId) {
+            urgent.remove(pid)
+        }
+        while (tombstones.size > 1024) tombstones.remove(tombstones.keys.first())
+    }
+
+    val tombstoneCount get() = tombstones.size
+    fun isTombstoned(key: Long) = tombstones.containsKey(key)
     val pendingUrgent get() = urgent.size
 
     companion object {
         val CARRY_TYPES = setOf(MeshType.SOS, MeshType.ACK, MeshType.RALLY, MeshType.PUBLIC_SOS, MeshType.RESPOND, MeshType.FOUND, MeshType.FOUND_ACK, MeshType.OFFICIAL)
+        val STRETCHED_RETRIES = longArrayOf(2_000L, 5_000L, 10_000L, 20_000L, 40_000L, 40_000L)
     }
 
     private fun enqueue(o: Out) {

@@ -96,6 +96,30 @@ Format per entry:
 - **Decision:** Set `RANDOM_SLOT` as default in `MeshConfig.relayRule`, while keeping `RSSI_FAR_FIRST` fully supported for phone-line tests. Adopt the 4-tier `DensityPolicy` table (routine/urgent TTL, probability gate, suppressAfter, and Trickle beacon periods). Urgent frames always bypass the probability gate.
 - **Approved by:** Project Owner / Engineering Lead
 
+### DEC-002c: Phase 5 Healing, Anti-Entropy Summaries & Delivery Guarantees
+
+- **Date:** 2026-10-11
+- **Question:** How should disconnected and returning nodes reconcile missing urgent items across crowd gaps without blind re-send floods, and how to guarantee acknowledged emergencies are never resurrected?
+- **Options considered:**
+  1. Full anti-entropy cache summaries (`MeshType.SUMMARY(14)`, 512-bit Bloom filter $k=7$ + 16-byte SHA-256 digest + fallback exact 4-byte key exchange) with tombstones (`expiresAt = maxAgeS + 300s`) and custody-by-overhearing. Defer aggregated ACK bitmaps.
+  2. Aggregated ACK bitmaps per crew member.
+  3. Blind multi-packet offers (Phase 4 baseline: 8 packets re-sent blindly on every contact).
+- **Evidence:**
+  - **Bloom filter efficiency**: 64 bytes (512 bits, $k=7$) over 8-byte packet keys gives a theoretical false positive rate $<0.1\%$ at $N=32$ items.
+  - **Reconciliation byte reduction**:
+    - For 0 difference: sends a single 121 B summary frame instead of 1280 B blind offers (90.5% reduction in airtime).
+    - For 1 difference: total exchange is ~711 B across full summary + offer handshake (44.5% reduction vs blind offers).
+    - For large divergence / false positives: 16-byte SHA-256 digest mismatch triggers an exact summary variant (32 $\times$ 4-byte truncated keys = 128 B) that pinpoint-identifies all missing items with 0 false negatives.
+  - **Tombstones & resurrection prevention**:
+    - An incoming ACK or cancellation tombstones the packet key for `maxAgeS + 300s`, clears urgent retries, purges pending relays, and suppresses incoming duplicate frames.
+    - Carried payloads are not evicted prematurely so absent crew members / sleeping LPNs still receive missed emergencies upon reconnection, but tombstoned packets are never re-relayed on the air.
+  - **Custody-by-overhearing**:
+    - Hearing an independent relay re-transmitting our urgent packet marks custody and stretches retry backoff to [2s, 5s, 10s, 20s, 40s], saving airtime while preserving payload until an explicit ACK.
+  - **Aggregated ACK bitmaps deferred**:
+    - At realistic crew sizes (4–12 members), individual ACK frames and tombstones suffice with minimal overhead; bitmaps add complexity without practical gain.
+- **Decision:** Adopt Option 1. Implement `MeshType.SUMMARY` (type 14, unencrypted), 512-bit Bloom filter + truncated SHA-256 digest with exact summary fallback, tombstone cache with 5-minute buffer beyond `maxAgeS`, custody-by-overhearing with stretched retry backoff, and defer aggregated ACK bitmaps.
+- **Approved by:** Project Owner / Engineering Lead
+
 ---
 
 ### DEC-003: Phase 7 Link AI vs Rule Selection
