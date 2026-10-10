@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KHOJ design prototype v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+body{--g:#F4F2EC;--ink:#0B0B0B;--on:#F4F2EC;--mut:#5B5B55;--hair:#0B0B0B;--soft:#E7E4DA;--frame:#0B0B0B}
+body.night{--g:#0B0B0B;--ink:#FFFFFF;--on:#0B0B0B;--mut:#9A9A94;--hair:#3A3A38;--soft:#1A1A19;--frame:#2a2a28}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#d9d6cc;color:#0B0B0B;font-family:'Bricolage Grotesque',system-ui,sans-serif;min-height:100vh;display:flex;gap:40px;align-items:center;justify-content:center;padding:24px;flex-wrap:wrap}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:inherit}
+.num{font-variant-numeric:tabular-nums}
+.phone{width:390px;height:820px;border-radius:40px;border:10px solid var(--frame);background:var(--g);color:var(--ink);position:relative;overflow:hidden}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--g)}
+.sb{height:40px;display:flex;justify-content:space-between;align-items:center;padding:6px 24px 0;font-size:13px;font-weight:600;flex:none}
+.body{flex:1;min-height:0;display:flex;flex-direction:column}
+svg{display:block}.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:square;stroke-linejoin:miter}
+.top{display:flex;justify-content:space-between;align-items:flex-end;padding:4px 18px 10px;flex:none;border-bottom:3px solid var(--ink)}
+.logo{font-weight:800;font-size:30px;letter-spacing:-1px;line-height:.9}
+.top span{font-size:13px;color:var(--mut);font-weight:600}
+.radar{flex:none;height:300px}
+.rg{fill:none;stroke:var(--ink);stroke-opacity:.2}
+.rl{font-size:10px;fill:var(--mut);font-weight:600}
+.pin{transition:transform 1s linear;cursor:pointer}
+.tag{font-size:11px;font-weight:800;fill:var(--ink);paint-order:stroke;stroke:var(--g);stroke-width:4px}
+.list{flex:1;min-height:0;overflow-y:auto;scrollbar-width:none;border-top:3px solid var(--ink)}
+.list::-webkit-scrollbar,.scroll::-webkit-scrollbar{display:none}
+.lh{display:flex;justify-content:space-between;padding:8px 18px;font-size:13px;font-weight:800}
+.lh span{color:var(--mut);font-weight:600}
+.row{display:flex;align-items:center;gap:14px;padding:10px 18px;border-top:1px solid var(--hair);cursor:pointer}
+.row:active{background:var(--soft)}
+.badge{width:48px;height:48px;border-radius:4px;background:var(--c);color:#0B0B0B;font-weight:800;font-size:24px;display:flex;align-items:center;justify-content:center;flex:none}
+.badge.stale{background:transparent;border:2px dashed var(--mut);color:var(--mut)}
+.rt{flex:1;min-width:0}.rt b{display:block;font-size:20px;font-weight:600;line-height:1.1}
+.sub{font-size:13px;color:var(--mut);margin-top:3px;display:flex;gap:8px;align-items:center}
+.flag{white-space:nowrap;background:#FFC23D;color:#0B0B0B;font-size:12px;font-weight:800;padding:1px 7px;border-radius:2px}
+.flag.k{background:var(--ink);color:var(--on)}
+.rd{text-align:right;line-height:1}.rd .num{font-size:36px;font-weight:800;letter-spacing:-2px}.rd small{font-size:13px;color:var(--mut);margin-left:2px;font-weight:600}
+.hb{display:block;height:5px;margin-top:4px;border-radius:1px}
+.ra{width:30px;height:30px;transition:transform .8s ease;flex:none}
+.mini{display:flex;align-items:center;gap:12px;padding:8px 18px;background:var(--ink);color:var(--on);flex:none;cursor:pointer}
+.mini .ma{width:26px;height:26px;transition:transform .8s ease}
+.mini div{flex:1;line-height:1.15}.mini b{font-size:15px;font-weight:600}.mini small{display:block;font-size:11px;opacity:.7}
+.mini .num{font-size:26px;font-weight:800;letter-spacing:-1px}
+.sos{flex:none;display:flex;align-items:center;gap:12px;padding:0 18px;height:54px;background:#E5233A;color:#fff;cursor:pointer}
+.sos b{font-size:24px;font-weight:800;letter-spacing:1px}.sos small{margin-left:auto;font-size:12px;font-weight:600}
+.tabs{flex:none;height:62px;display:flex;border-top:3px solid var(--ink);background:var(--g)}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;color:var(--mut);font-weight:600;position:relative}
+.tab.on{color:var(--ink);font-weight:800}.tab.on:before{content:'';position:absolute;top:-3px;left:20%;right:20%;height:6px;background:var(--ink)}
+.topbar{display:flex;align-items:center;gap:14px;padding:6px 18px;flex:none}
+.ibtn{width:44px;height:44px;border:3px solid #0B0B0B;border-radius:4px;display:flex;align-items:center;justify-content:center;flex:none}
+.ttl{flex:1;line-height:1}.ttl small{font-size:13px;font-weight:600;opacity:.75}.ttl b{display:block;font-size:34px;font-weight:800;letter-spacing:-1px;margin-top:2px}
+.meter{display:flex;gap:6px;padding:4px 18px 0;flex:none}.meter i{flex:1;height:12px;background:rgba(11,11,11,.16)}
+.meter i.on{background:#0B0B0B}
+.field{color:#0B0B0B;transition:background 1s}
+.farea{flex:none;height:262px;display:flex;justify-content:center;align-items:center;margin-top:8px}
+.nrow{display:flex;justify-content:space-between;align-items:flex-end;padding:0 18px;flex:none}
+.big .num{font-size:128px;font-weight:800;letter-spacing:-8px;line-height:.82}.big small{font-size:36px;font-weight:800;margin-left:6px;letter-spacing:-1px}
+.nside{text-align:right;line-height:1.2;padding-bottom:6px}.nside b{display:block;font-size:21px;font-weight:800}.nside span{font-size:14px;font-weight:600;opacity:.8}
+.info{padding:14px 18px 0;font-size:13px;font-weight:600;opacity:.8;flex:none}
+.cta{margin:auto 18px 18px;display:flex;gap:10px;flex:none}
+.btn{flex:1;height:60px;border-radius:4px;font-weight:800;font-size:17px;display:flex;align-items:center;justify-content:center;gap:10px}
+.btn.k{background:#0B0B0B;color:#fff}.btn.sq{flex:none;width:60px;border:3px solid #0B0B0B}
+.btn.w{background:#fff;color:#0B0B0B}.btn.ink{background:var(--ink);color:var(--on)}
+.h1{font-size:40px;font-weight:800;letter-spacing:-1.5px;padding:2px 18px 10px;line-height:1;border-bottom:3px solid var(--ink)}
+.scroll{flex:1;overflow-y:auto;scrollbar-width:none}
+.band{background:#E5233A;color:#fff;padding:16px 18px 18px}
+.band .btn{width:100%;flex:none}.band small{font-size:14px;font-weight:800;opacity:.9}.band h2{font-size:38px;font-weight:800;letter-spacing:-1.5px;line-height:1;margin:4px 0 6px}.band p{font-size:15px;font-weight:600}
+.item{display:flex;gap:14px;padding:14px 18px;border-top:1px solid var(--hair)}
+.item .when{width:54px;flex:none;font-size:13px;font-weight:600;color:var(--mut);padding-top:3px}
+.item h3{font-size:22px;font-weight:600;line-height:1.15}.item p{font-size:14px;color:var(--mut);margin-top:3px}
+.item .flag{display:inline-block;margin-bottom:5px}
+.sec{padding:16px 18px 6px;font-size:13px;font-weight:800;border-top:3px solid var(--ink)}
+.seg{display:flex;gap:0;margin:6px 18px 14px;border:3px solid var(--ink)}
+.seg button{flex:1;height:50px;font-weight:800;font-size:18px;text-align:center;border-left:3px solid var(--ink)}.seg button:first-child{border-left:0}
+.seg button.on{background:var(--ink);color:var(--on)}
+.join{display:flex;gap:16px;padding:14px 18px;align-items:center}
+.qr{background:#fff;padding:8px;flex:none}
+.code{font-family:'Bricolage Grotesque',monospace;font-weight:800;font-size:23px;letter-spacing:1px;line-height:1.15;font-variant-numeric:tabular-nums}
+.join p{font-size:13px;color:var(--mut);margin-top:6px}
+.mrow{display:flex;align-items:center;gap:14px;padding:10px 18px;border-top:1px solid var(--hair)}.mrow .badge{width:40px;height:40px;font-size:20px}
+.mrow b{flex:1;font-size:19px;font-weight:600}.mrow span{font-size:15px;font-weight:800;width:44px;text-align:right}
+.mrow i{width:52px;height:8px;background:var(--soft);position:relative;flex:none}.mrow i u{position:absolute;inset:0 auto 0 0;background:var(--ink)}
+.sosfull{background:#E5233A;color:#fff}.sosfull .body{padding:0 18px}
+.sosfull .pb{height:14px;background:rgba(255,255,255,.3);margin:6px 0 0}.sosfull .pb i{display:block;height:100%;background:#fff;transition:width 1s linear}
+.faces{display:grid;grid-template-columns:1fr 1fr;gap:20px 14px;padding:16px 18px;flex:1;align-content:start}
+.faces button .badge{width:100%;height:auto;aspect-ratio:1;font-size:84px;border-radius:6px}.faces b{display:block;font-size:26px;font-weight:800;margin-top:6px;letter-spacing:-.5px}
+.faces small{font-size:14px;color:var(--mut);font-weight:600}
+.bigsos{height:120px;background:#E5233A;color:#fff;display:flex;align-items:center;justify-content:center;gap:14px;flex:none}.bigsos b{font-size:56px;font-weight:800;letter-spacing:2px}
+.side{max-width:300px;color:#33332f;font-size:14px;line-height:1.5}.side h2{font-size:22px;margin-bottom:6px;color:#0B0B0B}
+.nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.nav button{padding:8px 14px;border:2px solid #0B0B0B;font-size:13px;font-weight:800;text-align:center}.nav button.on{background:#0B0B0B;color:#fff}
+.side ul{padding-left:18px;margin-top:10px}.side li{margin-bottom:6px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="phone"><div class="screen" id="screen"></div></div>
+<div class="side">
+  <h2>KHOJ prototype v2</h2>
+  <p>Flat and signage-like instead of neon and glowing. Everything moves on its own; all names and numbers are sample data.</p>
+  <div class="nav" id="nav"></div>
+  <ul>
+    <li>No glow, gradients, glass or soft cards</li>
+    <li>Member = a square badge, like a metro line</li>
+    <li>Find floods the whole screen with colour: cool when far, hot when close</li>
+    <li>Daylight first, because crowds are outdoors</li>
+  </ul>
+</div>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const hx=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const mix=(a,b,t)=>{const A=hx(a),B=hx(b);return '#'+A.map((v,i)=>Math.round(v+(B[i]-v)*t).toString(16).padStart(2,'0')).join('')};
+const heat=d=>{const t=clamp((Math.log(clamp(d,5,200))-Math.log(5))/(Math.log(200)-Math.log(5)),0,1),s=['#FF7A1A','#FFC23D','#2EE59D','#59C7FF'],x=t*3,i=Math.min(2,Math.floor(x));return mix(s[i],s[i+1],x-i)};
+const near=d=>1-clamp((Math.log(clamp(d,5,200))-Math.log(5))/(Math.log(200)-Math.log(5)),0,1);
+const radius=d=>34+(Math.log(clamp(d,3,250))-Math.log(3))/(Math.log(250)-Math.log(3))*136;
+const word=d=>d<5?'Found them':d<15?'Almost there':d<40?'Close':d<100?'Getting closer':'Far';
+const COL={maa:'#F6A5F0',papa:'#59C7FF',aarav:'#FFC23D',didi:'#FF8A3D'};
+const M=[
+ {id:'maa',name:'Maa',d:4,b:10,heard:'now',batt:82},
+ {id:'papa',name:'Papa',d:42,b:38,heard:'3 s ago',batt:64},
+ {id:'aarav',name:'Aarav',d:118,b:322,heard:'8 s ago',batt:41},
+ {id:'didi',name:'Didi',d:210,b:200,heard:'2 min ago',batt:23,stale:true},
+];
+const get=id=>M.find(m=>m.id===id);
+const S={screen:'radar',finding:'papa',simple:false,circle:100,heading:0,t:0,sos:5,hist:[]};
+const I={
+ radar:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>',
+ board:'<path d="M4 5h16M4 12h16M4 19h10"/>',
+ group:'<rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/>',
+ back:'<path d="M16 4l-8 8 8 8"/>',x:'<path d="M5 5l14 14M19 5L5 19"/>',
+ warn:'<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v1"/>',
+ vol:'<path d="M3 9v6h4l6 4V5L7 9z"/><path d="M17 8a5 5 0 010 8"/>',
+ foot:'<path d="M8 3c2 0 3 2 3 5s-1 5-3 5-3-2-3-5 1-5 3-5zM16 11c2 0 3 2 3 5s-1 5-3 5-3-2-3-5 1-5 3-5z"/>',
+};
+const ic=(n,s)=>`<svg class="ic" ${s?`style="${s}"`:''} viewBox="0 0 24 24">${I[n]}</svg>`;
+const ARROW='<path d="M0 -92 L58 24 L16 10 L16 92 L-16 92 L-16 10 L-58 24 Z"/>';
+const arrowSvg=(cls,fill)=>`<svg class="${cls}" viewBox="-70 -100 140 200"><g style="fill:${fill}">${ARROW}</g></svg>`;
+const rel=b=>((b-S.heading)%360+540)%360-180;
+const out=m=>!m.stale&&m.d>S.circle;
+const badge=(m,x='')=>`<div class="badge ${m.stale?'stale':''}" style="--c:${COL[m.id]};${x}">${m.name[0]}</div>`;
+
+const sb=(c)=>`<div class="sb" ${c?`style="color:${c}"`:''}><span>5:12</span><span>78%</span></div>`;
+const tabs=()=>`<div class="tabs">${[['radar','Radar'],['board','Board'],['group','Group']].map(([k,l])=>`<button class="tab ${S.screen===k?'on':''}" onclick="go('${k}')">${ic(k)}${l}</button>`).join('')}</div>`;
+const sosDock=()=>`<div class="sos" onclick="go('sos')">${ic('warn')}<b>SOS</b><small>Tap, then 5 s to cancel</small></div>`;
+const mini=()=>{const m=get(S.finding);return `<div class="mini" onclick="go('find')">${arrowSvg('ma a-'+m.id,'var(--on)')}<div><b>Finding ${m.name}</b><small>Tap to open</small></div><span class="num d-${m.id}">${m.d}</span><small style="margin:0 0 0 3px;opacity:.7">m</small></div>`};
+
+function radar(){
+ const cx=195,cy=186,rc=radius(S.circle);
+ const pins=M.map(m=>{const a=rel(m.b)*Math.PI/180,r=radius(m.d);
+  const sel=S.finding===m.id&&!m.stale;
+  return `<g class="pin" id="pin-${m.id}" style="transform:translate(${cx+r*Math.sin(a)}px,${cy-r*Math.cos(a)}px)" onclick="find('${m.id}')">
+   ${sel?'<rect x="-23" y="-23" width="46" height="46" rx="5" style="fill:none;stroke:var(--ink);stroke-width:3"/>':''}
+   <rect x="-17" y="-17" width="34" height="34" rx="3" style="fill:${m.stale?'var(--g)':COL[m.id]};stroke:${m.stale?'var(--mut)':'#0B0B0B'};stroke-width:2.5" ${m.stale?'stroke-dasharray="5 4"':''}/>
+   <text y="8" text-anchor="middle" font-size="22" font-weight="800" style="fill:${m.stale?'var(--mut)':'#0B0B0B'}">${m.name[0]}</text>
+   <text class="tag" x="${a>0?-27:27}" y="5" text-anchor="${a>0?'end':'start'}">${out(m)?'! ':''}${m.d} m</text></g>`}).join('');
+ const list=[...M].sort((a,b)=>(a.stale-b.stale)||(a.d-b.d)).map(m=>{
+  const sub=m.stale?`Not heard for ${m.heard.replace(' ago','')}`:out(m)?`<span class="flag">Outside circle</span>${m.heard}`:S.finding===m.id?`<span class="flag k">Finding</span>${m.heard}`:`<span id="dl-${m.id}">Closer</span>·<span>${m.heard}</span>`;
+  return `<div class="row" onclick="find('${m.id}')">${badge(m)}<div class="rt"><b>${m.name}</b><div class="sub">${sub}</div></div><div class="rd">${m.stale?'<span class="num" style="color:var(--mut)">'+m.d+'</span>':'<span class="num d-'+m.id+'">'+m.d+'</span>'}<small>m</small>${m.stale?'':`<i class="hb hb-${m.id}" style="background:${heat(m.d)}"></i>`}</div>${arrowSvg('ra a-'+m.id,m.stale?'var(--mut)':'var(--ink)')}</div>`}).join('');
+ return `${sb()}<div class="body">
+ <div class="top"><span class="logo">KHOJ</span><span>12 phones around you</span></div>
+ <div class="radar"><svg viewBox="0 0 390 372" width="390" height="300">
+  ${[10,50,200].map(d=>`<circle class="rg" cx="${cx}" cy="${cy}" r="${radius(d)}"/><text class="rl" x="${cx+5}" y="${cy-radius(d)+12}">${d} m</text>`).join('')}
+  <circle cx="${cx}" cy="${cy}" r="${rc}" style="fill:none;stroke:var(--ink);stroke-width:2" stroke-dasharray="7 6"/>
+  <text class="rl" x="${cx+5}" y="${cy-rc-5}" style="fill:var(--ink);font-weight:800">Circle ${S.circle} m</text>
+  <polygon points="${cx},${cy-14} ${cx+11},${cy+10} ${cx-11},${cy+10}" style="fill:var(--ink)"/>
+  ${pins}</svg></div>
+ <div class="list"><div class="lh">Family<span>4 people, nearest first</span></div>${list}</div>
+ ${S.finding?mini():''}${sosDock()}${tabs()}</div>`}
+
+function find(id){S.finding=id;go('find')}
+function findScreen(){
+ const m=get(S.finding),sim=S.simple;
+ return `<div class="screen field" id="field">${sb('#0B0B0B')}<div class="body">
+ <div class="topbar"><button class="ibtn" onclick="go('radar')">${ic('back')}</button><div class="ttl"><small>Finding</small><b>${m.name}</b></div></div>
+ <div class="meter" id="meter">${[0,1,2,3,4].map(()=>'<i></i>').join('')}</div>
+ <div class="farea"><svg viewBox="-110 -110 220 220" width="${sim?290:262}" height="${sim?290:262}"><g id="wedge" style="transition:transform .8s ease"><path d="M0 0 L-52 -112 A124 124 0 0 1 52 -112 Z" fill="#0B0B0B" fill-opacity=".1"/></g><g id="arrowg" style="transition:transform .8s ease" fill="#0B0B0B">${ARROW}</g></svg></div>
+ <div class="nrow"><div class="big"><span class="num" id="fd">${m.d}</span><small>m</small></div><div class="nside"><b id="fw">${word(m.d)}</b><span>about <span id="fs">${Math.round(m.d/.7)}</span> steps</span></div></div>
+ ${sim?'':`<div class="info">Heard ${m.heard} · GPS ±8 m · compass ±20°</div>`}
+ <div class="cta"><button class="btn sq" onclick="speak()">${ic('vol','width:28px;height:28px')}</button><button class="btn k" onclick="go('radar')">Stop finding</button></div></div></div>`}
+
+function sosScreen(){const done=S.sos<=0;
+ return `<div class="screen sosfull">${sb('#fff')}<div class="body">
+ ${done?`<div style="flex:1;display:flex;flex-direction:column;justify-content:center"><div style="font-size:110px;font-weight:800;letter-spacing:-6px;line-height:.9">SOS sent</div><p style="font-size:19px;font-weight:600;margin-top:16px;line-height:1.3">The siren is on. Your family's phones have your location.</p></div>`:
+ `<div class="pb"><i id="pbar" style="width:${S.sos/5*100}%"></i></div><div style="flex:1;display:flex;flex-direction:column;justify-content:center"><div class="num" id="sn" style="font-size:300px;font-weight:800;letter-spacing:-16px;line-height:.8">${S.sos}</div><div style="font-size:34px;font-weight:800;letter-spacing:-1px;margin-top:10px">Sending SOS</div><p style="font-size:16px;font-weight:600;margin-top:6px;opacity:.9">The siren starts and your family gets your location.</p></div>`}
+ <button class="btn w" style="flex:none;height:84px;margin-bottom:20px;font-size:26px" onclick="go('radar')">${ic('x','width:30px;height:30px')}${done?'Stop siren':'Cancel'}</button></div></div>`}
+
+function board(){return `${sb()}<div class="body"><div class="band"><small>SOS · 8 s ago</small><h2>Aarav needs help</h2><p>118 m away, outside your circle</p><button class="btn w" style="margin-top:14px;height:54px" onclick="find('aarav')">Find Aarav</button></div>
+ <div class="scroll">
+ <div class="item"><div class="when">Now</div><div><span class="flag k">Official</span><h3>Avoid the east gate</h3><p>Crowd is building up. Use gate 4 or 5. Signed by the event authority.</p></div></div>
+ <div class="item"><div class="when">In 38 min</div><div><h3>Meet at gate 4, 5:30 pm</h3><p>Set by Papa</p></div></div>
+ <div class="item"><div class="when">2 min</div><div><h3>I'm near the stage</h3><p>Didi</p></div></div></div>
+ ${S.finding?mini():''}${sosDock()}${tabs()}</div>`}
+
+function qr(){let s=7,c='';const fin=(x,y)=>(x<7&&y<7)||(x>17&&y<7)||(x<7&&y>17);
+ for(let y=0;y<25;y++)for(let x=0;x<25;x++){s=(s*1103515245+12345)&0x7fffffff;let on;
+  if(fin(x,y)){const lx=x<7?x:x-18,ly=y<7?y:y-18;on=lx==0||lx==6||ly==0||ly==6||(lx>1&&lx<5&&ly>1&&ly<5)}else on=(s>>8)%2==0;
+  if(on)c+=`<rect x="${x*5}" y="${y*5}" width="5" height="5"/>`}
+ return `<svg viewBox="0 0 125 125" width="118" height="118" fill="#0B0B0B">${c}</svg>`}
+function group(){return `${sb()}<div class="body"><div class="h1">Sharma family</div><div class="scroll">
+ <div class="join"><div class="qr">${qr()}</div><div><div class="code">ABCD<br>EFGH<br>JKLM</div><p>Show this code to add someone</p></div></div>
+ <div class="sec">Alert me when anyone goes beyond</div>
+ <div class="seg">${[30,50,100,200].map(v=>`<button class="${S.circle===v?'on':''}" onclick="S.circle=${v};render()">${v} m</button>`).join('')}</div>
+ <div class="sec">People</div>
+ ${M.map(m=>`<div class="mrow">${badge(m)}<b>${m.name}</b><i><u style="width:${m.batt}%"></u></i><span>${m.batt}%</span></div>`).join('')}
+ <div style="padding:16px 18px"><button class="btn ink" style="width:100%">Make a wristband for a child or elder</button></div></div>
+ ${S.finding?mini():''}${sosDock()}${tabs()}</div>`}
+
+function simple(){return `${sb()}<div class="body"><div class="top"><span class="logo">KHOJ</span><button onclick="speak()">${ic('vol','width:32px;height:32px')}</button></div>
+ <div class="faces">${M.filter(m=>!m.stale).concat(M.filter(m=>m.stale)).map(m=>`<button onclick="find('${m.id}')">${badge(m)}<b>${m.name}</b><small>${m.stale?'far away':'tap to find'}</small></button>`).join('')}</div>
+ <div class="bigsos" onclick="go('sos')">${ic('warn','width:52px;height:52px')}<b>SOS</b></div></div>`}
+
+function render(){
+ const sc=S.screen;let h;
+ if(sc==='radar')h=S.simple?simple():radar();else if(sc==='find')h=findScreen();else if(sc==='sos')h=sosScreen();else if(sc==='board')h=board();else h=group();
+ $('#screen').outerHTML=sc==='find'||sc==='sos'?h.replace('<div class="screen','<div id="screen" class="screen'):`<div id="screen" class="screen">${h}</div>`;
+ const night=document.body.classList.contains('night');
+ $('#nav').innerHTML=[['radar','Radar'],['find','Find'],['sos','SOS'],['board','Board'],['group','Group']].map(([k,l])=>`<button class="${sc===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('')+`<button class="${S.simple?'on':''}" onclick="S.simple=!S.simple;S.screen='radar';render()">Simple mode</button><button class="${night?'on':''}" onclick="document.body.classList.toggle('night');render()">Night</button>`;
+ paint();
+}
+function go(s){S.screen=s;if(s==='sos')S.sos=5;render()}
+function speak(){try{speechSynthesis.speak(new SpeechSynthesisUtterance('Papa is that way.'))}catch(e){}}
+
+function sim(){const t=S.t;S.heading=22*Math.sin(t/7);
+ const p=get('papa'),pr=p.d;p.d=Math.max(4,Math.round(46+40*Math.sin(t/13)));p.b=38+10*Math.sin(t/5);p.delta=pr-p.d;
+ const m=get('maa');m.d=Math.round(4+1.5*Math.sin(t/3));m.b=10+6*Math.sin(t/4);
+ const a=get('aarav');a.d=Math.round(118+4*Math.sin(t/9));a.b=322+3*Math.sin(t/6)}
+function paint(){
+ M.forEach(m=>{
+  $$('.d-'+m.id).forEach(e=>e.textContent=m.d);
+  $$('.a-'+m.id).forEach(e=>e.style.transform=`rotate(${rel(m.b)}deg)`);
+  $$('.hb-'+m.id).forEach(e=>e.style.background=heat(m.d));
+  const pin=$('#pin-'+m.id);if(pin){const a=rel(m.b)*Math.PI/180,r=radius(m.d);pin.style.transform=`translate(${195+r*Math.sin(a)}px,${186-r*Math.cos(a)}px)`}
+  const dl=$('#dl-'+m.id);if(dl&&m.delta!==undefined)dl.textContent=m.delta>0?'Closer':m.delta<0?'Farther':'Steady';
+ });
+ const f=$('#fd');if(f){const m=get(S.finding),c=heat(m.d),r=rel(m.b);
+  f.textContent=m.d;$('#fw').textContent=word(m.d);$('#fs').textContent=Math.round(m.d/.7);
+  $('#arrowg').style.transform=`rotate(${r}deg)`;$('#wedge').style.transform=`rotate(${r}deg)`;
+  $('.field').style.background=c;const n=Math.max(1,Math.round(near(m.d)*5));[...$('#meter').children].forEach((e,i)=>e.classList.toggle('on',i<n))}
+ if(S.screen==='sos'&&S.sos>0){const n=$('#sn');if(n){n.textContent=S.sos;$('#pbar').style.width=(S.sos/5*100)+'%'}}
+}
+setInterval(()=>{S.t++;sim();if(S.screen==='sos'&&S.sos>0){S.sos--;if(S.sos===0){render();return}}paint()},1000);
+const fit=()=>{$('.phone').style.zoom=Math.min(1,(innerHeight-24)/840)};addEventListener('resize',fit);fit();
+sim();render();
+</script>
+</body>
+</html>

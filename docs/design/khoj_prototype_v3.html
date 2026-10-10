@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KHOJ design prototype v3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body{--bg:#EEF2F6;--fg:#0B0B0F;--sec:rgba(60,60,67,.62);--glass:rgba(255,255,255,.62);--gline:rgba(255,255,255,.75);--hair:rgba(60,60,67,.16);--card:#fff;--grp:#F2F2F7;--blue:#0A84FF;--green:#30B350;--orange:#E58A00;--red:#FF3B30;--shadow:0 10px 30px rgba(20,30,50,.14);--frame:#16181b}
+body.night{--bg:#0B0C0E;--fg:#fff;--sec:rgba(235,235,245,.6);--glass:rgba(40,40,46,.55);--gline:rgba(255,255,255,.16);--hair:rgba(255,255,255,.13);--card:#1C1C1E;--grp:#000;--green:#30D158;--orange:#FF9F0A;--shadow:0 10px 30px rgba(0,0,0,.45)}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#cfd5db;color:#0B0B0F;font-family:'Inter',-apple-system,system-ui,sans-serif;min-height:100vh;display:flex;gap:44px;align-items:center;justify-content:center;padding:24px;flex-wrap:wrap}
+body.night{background:#1a1c1f}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:inherit}
+.num{font-variant-numeric:tabular-nums}
+.phone{width:390px;height:820px;border-radius:52px;border:10px solid var(--frame);background:var(--bg);color:var(--fg);position:relative;overflow:hidden;box-shadow:0 40px 90px rgba(0,0,0,.35)}
+.screen{position:absolute;inset:0;overflow:hidden}
+.screen.enter{animation:in .42s cubic-bezier(.32,.72,0,1)}
+@keyframes in{from{opacity:0;transform:translateX(26px) scale(.985)}to{opacity:1;transform:none}}
+.sb{position:absolute;top:0;left:0;right:0;height:44px;display:flex;justify-content:space-between;align-items:center;padding:8px 30px 0;font-size:15px;font-weight:600;z-index:30;pointer-events:none}
+svg{display:block}.ic{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.glass{background:var(--glass);backdrop-filter:blur(26px) saturate(1.9);-webkit-backdrop-filter:blur(26px) saturate(1.9);border:1px solid var(--gline);box-shadow:inset 0 1px 0 rgba(255,255,255,.45),var(--shadow)}
+.press{transition:transform .18s cubic-bezier(.32,.72,0,1)}.press:active{transform:scale(.96)}
+.ground{position:absolute;inset:0;background:radial-gradient(circle at 50% 300px,#FAFCFE 0,#E4ECF2 62%,#D6E0E8 100%)}
+body.night .ground{background:radial-gradient(circle at 50% 300px,#1B2024 0,#101316 62%,#0B0C0E 100%)}
+#radarwrap{position:absolute;left:0;right:0;top:0;height:560px;transform-origin:50% 300px}
+.pin{transition:transform 1s linear;cursor:pointer}
+.pg{transform-box:fill-box;transform-origin:center;animation:ping 4.2s ease-out infinite}.pg.b{animation-delay:2.1s}
+@keyframes ping{0%{opacity:.5;transform:scale(.1)}100%{opacity:0;transform:scale(1)}}
+.selr{transform-box:fill-box;transform-origin:center;animation:selp 2.2s ease-out infinite}
+@keyframes selp{0%{opacity:.8;transform:scale(1)}100%{opacity:0;transform:scale(1.7)}}
+.lbl{font-size:12px;font-weight:600;fill:var(--fg);paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
+.lbl2{font-size:11px;font-weight:500;fill:var(--sec);paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round}
+.rl{font-size:10px;font-weight:500;fill:var(--sec)}
+.top{position:absolute;top:50px;left:16px;right:16px;display:flex;justify-content:space-between;align-items:center;z-index:20}
+.gp{height:44px;border-radius:22px;padding:0 16px;display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600}
+.gp small{font-weight:500;color:var(--sec);font-size:13px}
+.sosb{height:44px;border-radius:22px;padding:0 16px 0 12px;display:flex;align-items:center;gap:6px;background:var(--red);color:#fff;font-weight:700;font-size:16px;letter-spacing:.3px;box-shadow:0 6px 20px rgba(255,59,48,.45),inset 0 1px 0 rgba(255,255,255,.35)}
+.sheet{position:absolute;left:0;right:0;bottom:0;height:640px;border-radius:30px 30px 0 0;z-index:15;touch-action:none}
+.sheet.glass{border-bottom:0}
+.grab{padding:8px 0 4px;cursor:grab}.grab i{display:block;width:38px;height:5px;border-radius:3px;background:var(--hair);margin:0 auto;filter:brightness(.8)}
+.sh{padding:6px 20px 8px;display:flex;justify-content:space-between;align-items:baseline}
+.sh b{font-size:24px;font-weight:700;letter-spacing:-.5px}.sh span{font-size:14px;color:var(--sec);font-weight:500}
+.list{overflow:hidden;height:560px;padding-bottom:170px}
+.row{display:flex;align-items:center;gap:13px;padding:9px 20px;cursor:pointer;position:relative}
+.row:not(:first-child):before{content:'';position:absolute;top:0;left:79px;right:0;height:1px;background:var(--hair)}
+.row.in{animation:rin .5s cubic-bezier(.32,.72,0,1) backwards}
+@keyframes rin{from{opacity:0;transform:translateY(14px)}}
+.av{width:var(--s,46px);height:var(--s,46px);border-radius:50%;background:linear-gradient(180deg,var(--c1),var(--c2));color:#fff;font-weight:600;font-size:calc(var(--s,46px)*.42);display:flex;align-items:center;justify-content:center;flex:none;text-shadow:0 1px 2px rgba(0,0,0,.18)}
+.av.stale{background:var(--hair);color:var(--sec);text-shadow:none}
+.rt{flex:1;min-width:0}.rt b{display:block;font-size:17px;font-weight:600;letter-spacing:-.2px}
+.st{font-size:13px;color:var(--sec);font-weight:500}.st.ok{color:var(--green)}.st.warn{color:var(--orange)}
+.rd{text-align:right}.rd b{font-size:20px;font-weight:600;letter-spacing:-.4px}.rd small{font-size:13px;color:var(--sec);font-weight:500}
+.ra{width:20px;height:20px;transition:transform .8s cubic-bezier(.32,.72,0,1);flex:none;color:var(--blue)}
+.tabbar{position:absolute;left:16px;right:16px;bottom:16px;height:64px;border-radius:32px;display:flex;padding:5px;z-index:25}
+.tab{flex:1;border-radius:27px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:11px;font-weight:600;color:var(--sec);transition:background .3s}
+.tab.on{color:var(--blue);background:rgba(120,130,150,.18)}
+.mini{position:absolute;left:16px;right:16px;bottom:90px;height:58px;border-radius:29px;display:flex;align-items:center;gap:12px;padding:0 18px 0 11px;z-index:24;cursor:pointer}
+.mini .av{--s:36px}.mini .t{flex:1;line-height:1.2}.mini .t b{font-size:15px;font-weight:600}.mini .t small{display:block;font-size:12px;color:var(--sec)}
+.mini .n{font-size:20px;font-weight:700}
+.fbg{position:absolute;inset:0}
+.blob{position:absolute;width:340px;height:340px;border-radius:50%;filter:blur(70px);opacity:.34;transition:background 1s}
+.blob.a{left:-90px;top:60px;animation:dr1 14s ease-in-out infinite alternate}.blob.b{right:-120px;bottom:30px;animation:dr2 17s ease-in-out infinite alternate}
+@keyframes dr1{to{transform:translate(70px,90px)}}@keyframes dr2{to{transform:translate(-60px,-80px)}}
+.fnt{position:absolute;inset:0;color:#fff;display:flex;flex-direction:column;align-items:center;padding-top:50px}
+.fhead{display:flex;align-items:center;width:100%;padding:0 16px;position:relative}
+.cbtn{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;--gline:rgba(255,255,255,.3);--glass:rgba(255,255,255,.18)}
+.fname{position:absolute;left:0;right:0;text-align:center;pointer-events:none}.fname b{display:block;font-size:20px;font-weight:600}.fname small{font-size:13px;opacity:.75;font-weight:500}
+.farea{position:relative;width:300px;height:300px;margin-top:44px}
+.oring{position:absolute;inset:30px;border-radius:50%;border:2px solid rgba(255,255,255,.85);opacity:0}
+.on .oring{animation:ring 1.6s ease-out infinite}.on .oring.b{animation-delay:.8s}
+@keyframes ring{0%{opacity:.9;transform:scale(.7)}100%{opacity:0;transform:scale(1.35)}}
+.fnum{font-size:132px;font-weight:700;letter-spacing:-7px;line-height:.95;margin-top:6px;text-shadow:0 4px 30px rgba(0,0,0,.18)}
+.fnum small{font-size:30px;letter-spacing:-.5px;font-weight:600;margin-left:6px;opacity:.8}
+.fw{font-size:22px;font-weight:600;margin-top:4px}
+.fs{font-size:15px;opacity:.78;margin-top:4px;font-weight:500}
+.finfo{font-size:12px;opacity:.65;margin-top:10px;font-weight:500}
+.fcta{position:absolute;left:16px;right:16px;bottom:24px;display:flex;gap:10px}
+.gbtn{height:60px;border-radius:30px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:600;color:#fff;--gline:rgba(255,255,255,.3);--glass:rgba(255,255,255,.2);flex:1}
+.gbtn.sq{flex:none;width:60px}
+.sosbg{position:absolute;inset:0;background:radial-gradient(120% 80% at 50% 30%,#FF5A4F,#D1241A 70%,#9E1810)}
+.sosn{font-size:230px;font-weight:700;letter-spacing:-12px;line-height:1}
+.chk{width:130px;height:130px;border-radius:50%;background:#fff;color:#D1241A;display:flex;align-items:center;justify-content:center;animation:pop .6s cubic-bezier(.34,1.56,.64,1)}
+@keyframes pop{from{transform:scale(.3);opacity:0}}
+.rip{position:absolute;border-radius:50%;border:2px solid rgba(255,255,255,.7);animation:ripp 2.4s ease-out infinite}
+@keyframes ripp{0%{width:130px;height:130px;opacity:.8}100%{width:420px;height:420px;opacity:0}}
+.plain{background:var(--grp)}.plain .sc{position:absolute;inset:0;overflow-y:auto;padding:54px 0 170px;scrollbar-width:none}.plain .sc::-webkit-scrollbar{display:none}
+.lt{font-size:34px;font-weight:700;letter-spacing:-1px;padding:12px 20px 12px}
+.card{background:var(--card);border-radius:20px;margin:0 16px 16px;overflow:hidden}
+.sec{font-size:13px;font-weight:500;color:var(--sec);padding:10px 36px 6px;text-transform:none}
+.notif{padding:14px}
+.nh{display:flex;gap:12px;align-items:flex-start}
+.tile{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
+.nh b{font-size:16px;font-weight:600}.nh p{font-size:14px;color:var(--sec);margin-top:1px;line-height:1.3}.nh time{white-space:nowrap;margin-left:auto;font-size:12px;color:var(--sec)}
+.acts{display:flex;gap:8px;margin-top:12px}.acts button{flex:1;height:42px;border-radius:21px;font-weight:600;font-size:15px;text-align:center;background:rgba(120,130,150,.18)}.acts .p{background:var(--blue);color:#fff}
+.li{display:flex;gap:12px;align-items:center;padding:12px 14px;position:relative}.li:not(:first-child):before{content:'';position:absolute;top:0;left:66px;right:0;height:1px;background:var(--hair)}
+.li .t{flex:1}.li .t b{display:block;font-size:16px;font-weight:600}.li .t span{font-size:13px;color:var(--sec)}
+.pass{margin:0 16px 16px;border-radius:26px;padding:20px;color:#fff;position:relative;overflow:hidden;background:linear-gradient(145deg,#26323a,#0f1519 70%);box-shadow:0 18px 40px rgba(10,20,30,.35)}
+.pass:after{content:'';position:absolute;inset:0;background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.09) 50%,transparent 60%);animation:sheen 6s ease-in-out infinite;transform:translateX(-100%)}
+@keyframes sheen{40%,100%{transform:translateX(100%)}}
+.pass small{font-size:12px;letter-spacing:2px;opacity:.65;font-weight:600}.pass h2{font-size:28px;font-weight:700;letter-spacing:-.8px;margin:4px 0 14px}
+.pq{display:flex;gap:16px;align-items:center}.qrt{background:#fff;border-radius:14px;padding:9px}
+.code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px;letter-spacing:1px;line-height:1.5}
+.stack{display:flex;margin-top:12px}.stack .av{--s:30px;margin-left:-9px;box-shadow:0 0 0 2px #1a2228}.stack .av:first-child{margin-left:0}
+.seg{position:relative;display:flex;background:rgba(120,130,150,.2);border-radius:12px;padding:3px;margin:0 16px 16px}
+.seg .th{position:absolute;top:3px;bottom:3px;width:calc(25% - 1.5px);background:var(--card);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.15);transition:transform .4s cubic-bezier(.34,1.3,.64,1)}
+.seg button{flex:1;height:36px;position:relative;text-align:center;font-weight:600;font-size:14px}
+.bat{width:26px;height:12px;border:1.5px solid var(--sec);border-radius:4px;padding:1.5px;position:relative}.bat u{display:block;height:100%;border-radius:1.5px;background:var(--green)}.bat u.lo{background:var(--red)}
+.bigbtn{margin:0 16px;height:54px;border-radius:27px;background:var(--blue);color:#fff;font-weight:600;font-size:17px;display:flex;align-items:center;justify-content:center}
+.faces{position:absolute;left:0;right:0;top:110px;display:grid;grid-template-columns:1fr 1fr;gap:22px 16px;padding:0 20px}
+.faces .av{--s:132px;border-radius:38px;margin:0 auto;font-size:60px}.faces b{display:block;text-align:center;font-size:24px;font-weight:700;margin-top:8px}
+.faces span{display:block;text-align:center;font-size:14px;color:var(--sec);font-weight:500}
+.bigsos{position:absolute;left:16px;right:16px;bottom:22px;height:110px;border-radius:36px;background:var(--red);color:#fff;display:flex;align-items:center;justify-content:center;gap:14px;font-size:44px;font-weight:700;letter-spacing:2px;box-shadow:0 12px 34px rgba(255,59,48,.45),inset 0 1px 0 rgba(255,255,255,.35)}
+.side{max-width:310px;color:#2a2f35;font-size:14px;line-height:1.55}body.night .side{color:#b9c0c8}
+.side h2{font-size:22px;margin-bottom:6px;color:var(--fg2,#0B0B0F)}body.night .side h2{color:#fff}
+.nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.nav button{padding:8px 14px;border-radius:99px;background:rgba(120,130,150,.22);font-size:13px;font-weight:600;text-align:center}.nav button.on{background:#0A84FF;color:#fff}
+.side ul{padding-left:18px;margin-top:10px}.side li{margin-bottom:6px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="phone"><div class="screen" id="screen"></div></div>
+<div class="side">
+  <h2>KHOJ prototype v3</h2>
+  <p>Refined iOS style: glass materials, spring motion, Find My style precision screen. Drag the list up and down on the radar. Everything moves by itself; all names and numbers are sample data.</p>
+  <div class="nav" id="nav"></div>
+  <ul>
+    <li><b>Radar:</b> a safe-zone disc, your heading cone, people as bubbles, far people pinned to the edge with an arrow</li>
+    <li>Sonar pulses, heading-up rotation, springy draggable sheet</li>
+    <li>Find: colour-adaptive screen, rolling numbers, pulse when you point straight at them</li>
+    <li>Group is a pass, like a Wallet card</li>
+  </ul>
+</div>
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const hx=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const mix=(a,b,t)=>{const A=hx(a),B=hx(b);return '#'+A.map((v,i)=>Math.round(v+(B[i]-v)*t).toString(16).padStart(2,'0')).join('')};
+const heat=d=>{const t=clamp((Math.log(clamp(d,5,200))-Math.log(5))/(Math.log(200)-Math.log(5)),0,1),s=['#FF8A1F','#FFC23D','#34D399','#4FB6F5'],x=t*3,i=Math.min(2,Math.floor(x));return mix(s[i],s[i+1],x-i)};
+const radius=d=>36+(Math.log(clamp(d,3,250))-Math.log(3))/(Math.log(250)-Math.log(3))*118;
+const word=(d,on)=>d<5?'Found them':d<15?'Almost there':on?'Straight ahead':d<40?'Close':d<100?'Getting closer':'Far';
+const COL={maa:'#FF6482',papa:'#32ADE6',aarav:'#FF9F0A',didi:'#BF5AF2',nani:'#A2845E'};
+const M=[
+ {id:'maa',name:'Maa',d:4,b:10,heard:'now'},
+ {id:'papa',name:'Papa',d:42,b:38,heard:'3 s ago'},
+ {id:'aarav',name:'Aarav',d:118,b:322,heard:'8 s ago'},
+ {id:'nani',name:'Nani',d:420,b:120,heard:'12 s ago'},
+ {id:'didi',name:'Didi',d:210,b:200,heard:'2 min ago',stale:true},
+];
+const get=id=>M.find(m=>m.id===id);
+const S={screen:'radar',finding:'papa',simple:false,circle:100,heading:0,t:0,sos:5,sheetV:300};
+const I={
+ radar:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
+ board:'<path d="M18 8a6 6 0 10-12 0c0 7-3 8-3 8h18s-3-1-3-8M13.7 20a2 2 0 01-3.4 0"/>',
+ group:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.6a3.5 3.5 0 010 6.8M18.5 14.4c1.8.8 3 2.6 3 5.6"/>',
+ back:'<path d="M15 5l-7 7 7 7"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>',
+ warn:'<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5v.3"/>',
+ vol:'<path d="M3.5 9.5v5h3.5l5 4v-13l-5 4z"/><path d="M16 8.5a5 5 0 010 7M18.8 6a9 9 0 010 12"/>',
+ ok:'<path d="M5 12.5l4.5 4.5L19 7"/>',flag:'<path d="M5 21V4M5 5h12l-2.5 4L17 13H5"/>',seal:'<path d="M12 3l2.4 1.8 3-.2 1 2.8 2.4 1.8-.9 2.9.9 2.9-2.4 1.8-1 2.8-3-.2L12 21l-2.4-1.8-3 .2-1-2.8L3.2 14.8l.9-2.9-.9-2.9L5.6 7.2l1-2.8 3 .2z"/><path d="M8.5 12.2l2.4 2.4 4.6-4.6"/>',
+ chev:'<path d="M9 5l7 7-7 7"/>',
+};
+const ic=(n,s)=>`<svg class="ic" ${s?`style="${s}"`:''} viewBox="0 0 24 24">${I[n]}</svg>`;
+const NAVI='<svg class="@" viewBox="0 0 24 24"><path d="M12 2.5L20 21l-8-4.2L4 21z" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+const navi=c=>NAVI.replace('@',c);
+const rel=b=>((b-S.heading)%360+540)%360-180;
+const out=m=>!m.stale&&m.d>S.circle;
+const av=(m,s)=>`<div class="av ${m.stale?'stale':''}" style="--c1:${mix(COL[m.id],'#FFFFFF',.28)};--c2:${COL[m.id]};${s?`--s:${s}px`:''}">${m.name[0]}</div>`;
+const sb=c=>`<div class="sb" style="color:${c||'var(--fg)'}"><span>5:12</span><span>78%</span></div>`;
+const dark=()=>document.body.classList.contains('night');
+
+function tabbar(){return `<div class="tabbar glass">${[['radar','Nearby'],['board','Activity'],['group','Group']].map(([k,l])=>`<button class="tab ${S.screen===k?'on':''}" onclick="go('${k}')">${ic(k,'width:22px;height:22px')}${l}</button>`).join('')}</div>`}
+function mini(){const m=get(S.finding);return `<div class="mini glass press" onclick="go('find')">${av(m)}<div class="t"><b>Finding ${m.name}</b><small>Tap to open</small></div><span class="n num d-${m.id}">${m.d}</span><small style="color:var(--sec);margin-left:-8px">m</small>${navi('ra a-'+m.id)}</div>`}
+
+function radar(){
+ const cx=195,cy=300,rc=radius(S.circle);
+ const defs=M.map(m=>`<linearGradient id="g-${m.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${mix(COL[m.id],'#FFFFFF',.28)}"/><stop offset="1" stop-color="${COL[m.id]}"/></linearGradient>`).join('');
+ const pins=[...M].sort((a,b)=>b.d-a.d).map(m=>{const edge=m.d>250,sel=S.finding===m.id&&!m.stale;
+  return `<g class="pin" id="pin-${m.id}" onclick="find('${m.id}')" style="transform:translate(${cx}px,${cy}px)">
+   ${sel?`<circle class="selr" r="26" fill="none" stroke="${COL[m.id]}" stroke-width="2.5"/>`:''}
+   <circle r="${sel?24:21}" fill="${m.stale?'var(--hair)':`url(#g-${m.id})`}" stroke="#fff" stroke-width="3" filter="url(#sh)" ${m.stale?'stroke-dasharray="4 3"':''}/>
+   <text y="${sel?8:7}" text-anchor="middle" font-size="${sel?21:19}" font-weight="600" fill="${m.stale?'var(--sec)':'#fff'}">${m.name[0]}</text>
+   ${edge?`<g class="edgech" style="transform-origin:0 0"><path d="M0 -37 l7 9 h-14z" fill="${COL[m.id]}"/></g>`:''}
+   <text class="lbl" y="${sel?40:37}" text-anchor="middle">${m.name}</text>
+   <text class="lbl2 pd" y="${sel?54:51}" text-anchor="middle">${m.stale?'last seen':m.d+' m'}</text>
+   ${out(m)?'<circle cx="16" cy="-16" r="8" fill="#FF9F0A" stroke="#fff" stroke-width="2"/><text x="16" y="-12.5" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">!</text>':''}
+  </g>`}).join('');
+ const list=[...M].sort((a,b)=>(a.stale-b.stale)||(a.d-b.d)).map((m,i)=>{
+  const st=m.stale?`Last seen ${m.heard.replace(' ago','')} ago`:out(m)?`Outside circle · ${m.heard}`:`<span id="dl-${m.id}">Closer</span> · ${m.heard}`;
+  return `<div class="row press in" style="animation-delay:${i*50}ms" onclick="find('${m.id}')">${av(m)}<div class="rt"><b>${m.name}</b><span class="st ${m.stale?'':out(m)?'warn':'ok'}">${st}</span></div><div class="rd"><b class="num d-${m.id}">${m.d}</b><small> m</small></div>${m.stale?'':navi('ra a-'+m.id)}</div>`}).join('');
+ return `<div class="ground"></div>
+ <div id="radarwrap"><svg viewBox="0 0 390 560" width="390" height="560">
+  <defs>${defs}<filter id="sh" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#000" flood-opacity=".28"/></filter>
+  <linearGradient id="cone" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#0A84FF" stop-opacity=".38"/><stop offset="1" stop-color="#0A84FF" stop-opacity="0"/></linearGradient></defs>
+  <circle cx="${cx}" cy="${cy}" r="${rc}" fill="rgba(48,209,88,.10)" stroke="rgba(48,209,88,.6)" stroke-width="1.5"/>
+  ${[10,50,200].map(d=>`<circle cx="${cx}" cy="${cy}" r="${radius(d)}" fill="none" stroke="var(--hair)"/><text class="rl" x="${cx}" y="${cy-radius(d)-4}" text-anchor="middle">${d} m</text>`).join('')}
+  <g transform="translate(${cx} ${cy-rc})"><rect x="-47" y="-12" width="94" height="22" rx="11" style="fill:var(--card);stroke:var(--hair)"/><text y="3.5" text-anchor="middle" font-size="11" font-weight="600" style="fill:var(--green)">Circle ${S.circle} m</text></g>
+  <circle class="pg" cx="${cx}" cy="${cy}" r="${radius(200)}" fill="none" stroke="#0A84FF" stroke-width="2"/><circle class="pg b" cx="${cx}" cy="${cy}" r="${radius(200)}" fill="none" stroke="#0A84FF" stroke-width="2"/>
+  <path d="M${cx} ${cy} L${cx-62} ${cy-150} A162 162 0 0 1 ${cx+62} ${cy-150} Z" fill="url(#cone)"/>
+  <circle cx="${cx}" cy="${cy}" r="9" fill="#0A84FF" stroke="#fff" stroke-width="3.5" filter="url(#sh)"/>
+  ${pins}</svg></div>
+ <div class="top"><div class="gp glass press">Sharma family<small>${M.filter(m=>!m.stale).length} nearby</small></div><button class="sosb press" onclick="go('sos')">${ic('warn','width:20px;height:20px;stroke-width:2.4')}SOS</button></div>
+ <div class="sheet glass" id="sheet"><div class="grab" id="grab"><i></i></div><div class="sh"><b>Family</b><span>Nearest first</span></div><div class="list" id="list">${list}</div></div>
+ ${S.finding?mini():''}${tabbar()}`}
+
+function find(id){S.finding=id;go('find')}
+function findScreen(){const m=get(S.finding),sim=S.simple;
+ return `<div class="fbg" id="fbg"></div><div class="blob a" id="b1"></div><div class="blob b" id="b2"></div>
+ <div class="fnt" id="fnt"><div class="fhead"><button class="cbtn glass press" onclick="go('radar')">${ic('back')}</button><div class="fname"><b>${m.name}</b><small>Direct link</small></div></div>
+  <div class="farea"><div class="oring"></div><div class="oring b"></div>
+   <svg viewBox="-150 -150 300 300" width="300" height="300" style="overflow:visible"><defs><linearGradient id="ag" x1="0" y1="-1" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="rgba(255,255,255,.72)"/></linearGradient><filter id="ash" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".25"/></filter></defs>
+    <circle r="138" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1.5"/>
+    <g id="wedge" style="transition:transform .9s cubic-bezier(.34,1.3,.64,1)"><path d="M0 0 L-50 -136 A145 145 0 0 1 50 -136 Z" fill="rgba(255,255,255,.13)"/></g>
+    <g id="arrowg" style="transition:transform .9s cubic-bezier(.34,1.3,.64,1)"><path d="M0 -92 L56 30 L14 14 L14 88 L-14 88 L-14 14 L-56 30 Z" fill="url(#ag)" stroke="url(#ag)" stroke-width="12" stroke-linejoin="round" filter="url(#ash)"/></g></svg></div>
+  <div class="fnum num"><span id="fd">${m.d}</span><small>m</small></div>
+  <div class="fw" id="fw">${word(m.d)}</div><div class="fs">about <span id="fs">${Math.round(m.d/.7)}</span> steps</div>
+  ${sim?'':`<div class="finfo">Heard ${m.heard} · GPS ±8 m · compass ±20°</div>`}
+  <div class="fcta"><button class="gbtn sq glass press" onclick="speak()">${ic('vol')}</button><button class="gbtn glass press" onclick="go('radar')">Stop finding</button></div></div>`}
+
+function sosScreen(){const done=S.sos<=0,C=2*Math.PI*128;
+ return `<div class="sosbg"></div><div style="position:absolute;inset:0;color:#fff;display:flex;flex-direction:column;align-items:center">
+ ${done?`<div style="margin-top:210px;position:relative;display:flex;align-items:center;justify-content:center;height:130px"><i class="rip"></i><i class="rip" style="animation-delay:.8s"></i><i class="rip" style="animation-delay:1.6s"></i><div class="chk">${ic('ok','width:70px;height:70px;stroke-width:3')}</div></div>
+  <div style="font-size:40px;font-weight:700;letter-spacing:-1px;margin-top:150px">SOS sent</div><p style="font-size:17px;opacity:.9;text-align:center;padding:0 44px;margin-top:8px;line-height:1.35">The siren is on and your family's phones have your location.</p>`:
+ `<div style="position:relative;width:290px;height:290px;margin-top:150px"><svg viewBox="-145 -145 290 290" width="290" height="290"><circle r="128" fill="none" stroke="rgba(255,255,255,.25)" stroke-width="10"/><circle id="sring" r="128" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" transform="rotate(-90)" stroke-dasharray="${C}" stroke-dashoffset="${(1-S.sos/5)*C}" style="transition:stroke-dashoffset 1s linear"/></svg><div class="sosn num" id="sn" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">${S.sos}</div></div>
+  <div style="font-size:28px;font-weight:700;margin-top:26px;letter-spacing:-.5px">Sending SOS</div><p style="font-size:16px;opacity:.85;margin-top:6px;text-align:center;padding:0 44px;line-height:1.35">The siren starts and your family gets your location.</p>`}
+ <button class="gbtn glass press" style="position:absolute;left:16px;right:16px;bottom:26px;flex:none;height:64px;border-radius:32px;--glass:rgba(255,255,255,.22)" onclick="go('radar')">${done?'Stop siren':'Cancel'}</button></div>`}
+
+function board(){return `<div class="plain"><div class="sc"><div class="lt">Activity</div>
+ <div class="card notif"><div class="nh"><div class="tile" style="background:var(--red)">${ic('warn','width:22px;height:22px')}</div><div><b>Aarav needs help</b><p>SOS · 118 m away, outside your circle</p></div><time>8 s</time></div><div class="acts"><button class="p press" onclick="find('aarav')">Find Aarav</button><button class="press">Dismiss</button></div></div>
+ <div class="sec">Earlier</div>
+ <div class="card"><div class="li"><div class="tile" style="background:#0A84FF">${ic('seal','width:22px;height:22px')}</div><div class="t"><b>Avoid the east gate</b><span>Official alert · signed by the event authority</span></div></div>
+ <div class="li"><div class="tile" style="background:#30B350">${ic('flag','width:22px;height:22px')}</div><div class="t"><b>Meet at gate 4, 5:30 pm</b><span>Set by Papa · in 38 min</span></div></div>
+ <div class="li">${av(get('didi'),40)}<div class="t"><b>I'm near the stage</b><span>Didi · 2 min ago</span></div></div></div></div></div>${S.finding?mini():''}${tabbar()}`}
+
+function qr(){let s=7,c='';const fin=(x,y)=>(x<7&&y<7)||(x>17&&y<7)||(x<7&&y>17);
+ for(let y=0;y<25;y++)for(let x=0;x<25;x++){s=(s*1103515245+12345)&0x7fffffff;let on;
+  if(fin(x,y)){const lx=x<7?x:x-18,ly=y<7?y:y-18;on=lx==0||lx==6||ly==0||ly==6||(lx>1&&lx<5&&ly>1&&ly<5)}else on=(s>>8)%2==0;
+  if(on)c+=`<rect x="${x*4}" y="${y*4}" width="4" height="4" rx=".6"/>`}
+ return `<svg viewBox="0 0 100 100" width="104" height="104" fill="#0B0B0F">${c}</svg>`}
+function group(){const i=[30,50,100,200].indexOf(S.circle);return `<div class="plain"><div class="sc"><div class="lt">Group</div>
+ <div class="pass"><small>KHOJ · FAMILY PASS</small><h2>Sharma family</h2><div class="pq"><div class="qrt">${qr()}</div><div><div class="code">ABCD<br>EFGH<br>JKLM</div></div></div><div class="stack">${M.map(m=>av(m)).join('')}</div></div>
+ <div class="sec">Alert me when anyone goes beyond</div>
+ <div class="seg"><i class="th" id="th" style="transform:translateX(${i*100}%)"></i>${[30,50,100,200].map(v=>`<button onclick="setCircle(${v})">${v} m</button>`).join('')}</div>
+ <div class="sec">People</div><div class="card">${M.map((m,k)=>`<div class="li">${av(m,40)}<div class="t"><b>${m.name}</b></div><span class="bat"><u class="${[82,64,41,57,23][k]<30?'lo':''}" style="width:${[82,64,41,57,23][k]}%"></u></span><span style="font-size:14px;color:var(--sec);width:36px;text-align:right">${[82,64,41,57,23][k]}%</span></div>`).join('')}</div>
+ <button class="bigbtn press">Make a wristband</button></div></div>${S.finding?mini():''}${tabbar()}`}
+
+function simple(){return `<div class="ground"></div><div class="top"><span style="font-size:30px;font-weight:700;letter-spacing:-1px">KHOJ</span><button class="cbtn glass press" style="color:var(--fg);--glass:var(--glass);--gline:var(--gline)" onclick="speak()">${ic('vol')}</button></div>
+ <div class="faces">${M.filter(m=>!m.stale&&m.d<250).concat(M.filter(m=>m.stale)).slice(0,4).map(m=>`<button class="press" onclick="find('${m.id}')">${av(m)}<b>${m.name}</b><span>${m.stale?'far away':'tap to find'}</span></button>`).join('')}</div>
+ <button class="bigsos press" onclick="go('sos')">${ic('warn','width:48px;height:48px;stroke-width:2.2')}SOS</button>`}
+
+function setCircle(v){S.circle=v;$('#th').style.transform=`translateX(${[30,50,100,200].indexOf(v)*100}%)`}
+
+function render(){
+ const sc=S.screen;let h,bar;
+ if(sc==='radar'){h=S.simple?simple():radar();bar=dark()?'#fff':'#0B0B0F'}else if(sc==='find'){h=findScreen();bar='#fff'}else if(sc==='sos'){h=sosScreen();bar='#fff'}else{h=sc==='board'?board():group();bar=dark()?'#fff':'#0B0B0F'}
+ const el=$('#screen');el.className='screen';void el.offsetWidth;el.className='screen enter';
+ el.innerHTML=sb(bar)+h;
+ $('#nav').innerHTML=[['radar','Nearby'],['find','Find'],['sos','SOS'],['board','Activity'],['group','Group']].map(([k,l])=>`<button class="${sc===k?'on':''}" onclick="go('${k}')">${l}</button>`).join('')+`<button class="${S.simple?'on':''}" onclick="S.simple=!S.simple;S.screen='radar';render()">Simple mode</button><button class="${dark()?'on':''}" onclick="document.body.classList.toggle('night');render()">Night</button>`;
+ if($('#sheet')){setSheet(S.sheetV,false);bindSheet()}
+ paint(true);
+}
+function go(s){S.screen=s;if(s==='sos')S.sos=5;render()}
+function speak(){try{speechSynthesis.speak(new SpeechSynthesisUtterance('Papa is that way.'))}catch(e){}}
+
+const SNAP=[300,450,640];
+function setSheet(v,anim){const sh=$('#sheet'),rw=$('#radarwrap');if(!sh)return;S.sheetV=v;const tr=anim?'transform .55s cubic-bezier(.32,.72,0,1)':'none';
+ sh.style.transition=tr;sh.style.transform=`translateY(${640-v}px)`;rw.style.transition=tr;rw.style.transform=`translateY(${-(v-300)*.55}px) scale(${1-(v-300)/340*.14})`;
+ $('#list').style.overflowY=v>=640?'auto':'hidden'}
+function bindSheet(){const g=$('#grab'),hd=$('.sh'),Z=parseFloat($('.phone').style.zoom)||1;
+ [g,hd].forEach(e=>e.onpointerdown=ev=>{const y0=ev.clientY,v0=S.sheetV;let last=y0,vel=0;e.setPointerCapture(ev.pointerId);
+  e.onpointermove=m=>{vel=(last-m.clientY);last=m.clientY;setSheet(clamp(v0+(y0-m.clientY)/Z,200,670),false)};
+  e.onpointerup=()=>{e.onpointermove=null;e.onpointerup=null;let v=S.sheetV+vel*14;v=SNAP.reduce((a,b)=>Math.abs(b-v)<Math.abs(a-v)?b:a);setSheet(v,true)}});
+ g.onclick=()=>{}}
+
+function sim(){const t=S.t;S.heading=22*Math.sin(t/7);
+ const p=get('papa'),pr=p.d;p.d=Math.max(4,Math.round(46+40*Math.sin(t/13)));p.b=S.heading+42*Math.sin(t/5.5);p.delta=pr-p.d;
+ const m=get('maa');m.d=Math.round(4+1.5*Math.sin(t/3));m.b=10+6*Math.sin(t/4);
+ const a=get('aarav');a.d=Math.round(118+4*Math.sin(t/9));a.b=322+3*Math.sin(t/6);
+ const n=get('nani');n.d=420+Math.round(6*Math.sin(t/8));n.b=120}
+const rolls={};
+function roll(el,val,first){if(!el)return;const k=el.id;const from=first||rolls[k]===undefined?val:rolls[k];rolls[k]=val;const t0=performance.now();
+ const f=now=>{const p=clamp((now-t0)/700,0,1),e=1-Math.pow(1-p,3);el.textContent=Math.round(from+(val-from)*e);if(p<1)requestAnimationFrame(f)};requestAnimationFrame(f)}
+function paint(first){
+ M.forEach(m=>{
+  $$('.d-'+m.id).forEach(e=>e.textContent=m.d);
+  $$('.a-'+m.id).forEach(e=>e.style.transform=`rotate(${rel(m.b)}deg)`);
+  const pin=$('#pin-'+m.id);if(pin){const a=rel(m.b)*Math.PI/180,r=radius(m.d);pin.style.transform=`translate(${195+r*Math.sin(a)}px,${300-r*Math.cos(a)}px)`;
+   const ch=pin.querySelector('.edgech');if(ch)ch.style.transform=`rotate(${rel(m.b)}deg) translate(0,0)`;const pd=pin.querySelector('.pd');if(pd&&!m.stale)pd.textContent=m.d+' m'}
+  const dl=$('#dl-'+m.id);if(dl&&m.delta!==undefined)dl.textContent=m.delta>0?'Closer':m.delta<0?'Farther':'Steady';
+ });
+ const f=$('#fd');if(f){const m=get(S.finding),c=heat(m.d),r=rel(m.b),on=Math.abs(r)<9&&m.d>=15;
+  roll(f,m.d,first);$('#fw').textContent=word(m.d,on);$('#fs').textContent=Math.round(m.d/.7);
+  $('#arrowg').style.transform=`rotate(${r}deg)`;$('#wedge').style.transform=`rotate(${r}deg)`;
+  const base=mix(c,'#000000',.66),hi=mix(c,'#000000',.4);
+  $('#fbg').style.background=`radial-gradient(130% 70% at 50% 22%,${hi},${base} 72%)`;$('#b1').style.background=c;$('#b2').style.background=c;
+  $('#fnt').classList.toggle('on',on)}
+ if(S.screen==='sos'&&S.sos>0){const n=$('#sn');if(n){n.textContent=S.sos;$('#sring').setAttribute('stroke-dashoffset',(1-S.sos/5)*2*Math.PI*128)}}
+}
+setInterval(()=>{S.t++;sim();if(S.screen==='sos'&&S.sos>0){S.sos--;if(S.sos===0){render();return}}paint(false)},1000);
+const fit=()=>{$('.phone').style.zoom=Math.min(1,(innerHeight-24)/840)};addEventListener('resize',fit);fit();
+sim();render();
+</script>
+</body>
+</html>
