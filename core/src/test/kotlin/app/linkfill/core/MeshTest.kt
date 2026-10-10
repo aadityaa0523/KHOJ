@@ -283,4 +283,152 @@ class MeshTest {
         assertEquals(1.0, Metrics.prAuc(listOf(0.9, 0.8, 0.1), listOf(1, 1, 0)), 1e-9)
         assertEquals(0.0, Metrics.brier(listOf(1.0, 0.0), listOf(1, 0)), 1e-9)
     }
+
+    @Test fun densityTierPolicySelection() {
+        val cfg = MeshConfig()
+        val p0 = cfg.densityPolicy(0)
+        assertEquals(4, p0.routineTtl)
+        assertEquals(6, p0.urgentTtl)
+        assertEquals(1.0, p0.relayProbability, 1e-9)
+        assertEquals(2, p0.suppressAfter)
+        assertEquals(3_000L, p0.beaconPeriodMs)
+
+        val p9 = cfg.densityPolicy(9)
+        assertEquals(4, p9.routineTtl)
+        assertEquals(2, p9.suppressAfter)
+
+        val p10 = cfg.densityPolicy(10)
+        assertEquals(3, p10.routineTtl)
+        assertEquals(5, p10.urgentTtl)
+        assertEquals(0.7, p10.relayProbability, 1e-9)
+        assertEquals(3, p10.suppressAfter)
+        assertEquals(6_000L, p10.beaconPeriodMs)
+
+        val p49 = cfg.densityPolicy(49)
+        assertEquals(3, p49.routineTtl)
+        assertEquals(3, p49.suppressAfter)
+
+        val p50 = cfg.densityPolicy(50)
+        assertEquals(2, p50.routineTtl)
+        assertEquals(4, p50.urgentTtl)
+        assertEquals(8.0 / 50.0, p50.relayProbability, 1e-9)
+        assertEquals(4, p50.suppressAfter)
+        assertEquals(12_000L, p50.beaconPeriodMs)
+
+        val p200 = cfg.densityPolicy(200)
+        assertEquals(2, p200.routineTtl)
+        assertEquals(3, p200.urgentTtl)
+        assertEquals(8.0 / 200.0, p200.relayProbability, 1e-9)
+        assertEquals(5, p200.suppressAfter)
+        assertEquals(20_000L, p200.beaconPeriodMs)
+    }
+
+    @Test fun urgentBypassesProbabilityGate() {
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(), Random(42), object : MeshListener {})
+        for (i in 1..200) {
+            r.links.onFrame(1000 + i, 1, -70, false, t0)
+        }
+        assertEquals(200, r.links.density(t0))
+        val policy = r.config.densityPolicy(r.links.density(t0))
+        assertEquals(0.04, policy.relayProbability, 1e-9)
+
+        for (i in 1..100) {
+            val bare = MeshPacket(MeshType.SOS, 3, 0, 999, i, crew.crewId, 2000 + i, 1, t0 / 1000, ByteArray(0))
+            val sealed = MeshPacket(MeshType.SOS, 3, 0, 999, i, crew.crewId, 2000 + i, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Sos(25.0, 82.0, "help")).second))
+            r.onFrame(MeshPacket.encode(sealed), -70, false, t0)
+        }
+        assertEquals(100, r.stats.relayScheduled)
+
+        r.stats.relayScheduled = 0
+        for (i in 1..100) {
+            val bare = MeshPacket(MeshType.TEXT, 3, 0, 999, 100 + i, crew.crewId, 3000 + i, 1, t0 / 1000, ByteArray(0))
+            val sealed = MeshPacket(MeshType.TEXT, 3, 0, 999, 100 + i, crew.crewId, 3000 + i, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Text("chat")).second))
+            r.onFrame(MeshPacket.encode(sealed), -70, false, t0)
+        }
+        assertTrue("non-urgent packets must be gated by relay probability", r.stats.relayScheduled < 20)
+    }
+
+    @Test fun suppressionThresholdAdaptsWithCrowdDensity() {
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(suppression = true), Random(1), object : MeshListener {})
+
+        val bare = MeshPacket(MeshType.TEXT, 3, 0, 99, 1, crew.crewId, 500, 1, t0 / 1000, ByteArray(0))
+        val sealed = MeshPacket(MeshType.TEXT, 3, 0, 99, 1, crew.crewId, 500, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Text("test")).second))
+        val encoded = MeshPacket.encode(sealed)
+        r.onFrame(encoded, -70, false, t0)
+        assertEquals(1, r.stats.relayScheduled)
+
+        val enc1 = MeshPacket.encode(MeshPacket(MeshType.TEXT, 3, 0, 101, 1, crew.crewId, 500, 1, t0 / 1000, sealed.body))
+        r.onFrame(enc1, -70, false, t0 + 10)
+        assertEquals(0, r.stats.suppressed)
+
+        val enc2 = MeshPacket.encode(MeshPacket(MeshType.TEXT, 3, 0, 102, 1, crew.crewId, 500, 1, t0 / 1000, sealed.body))
+        r.onFrame(enc2, -70, false, t0 + 20)
+
+        val frame = r.nextFrame(t0 + 500, allowFiller = false)
+        assertNull("frame should be suppressed after hearing 2 other relays in low density tier", frame)
+        assertEquals(1, r.stats.suppressed)
+    }
+
+    @Test fun urgentExponentialRetryScheduleAndJitterBounds() {
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(urgentMaxSends = 6), Random(123), object : MeshListener {})
+
+        val packetId = r.originate(MeshMessage.Sos(25.0, 82.0, "help"), t0)
+        assertEquals(1, r.pendingUrgent)
+
+        r.tick(t0 + 700)
+        assertEquals(0, r.stats.urgentResends)
+
+        r.tick(t0 + 1300)
+        assertEquals(1, r.stats.urgentResends)
+
+        r.tick(t0 + 1300 + 1500)
+        assertEquals(1, r.stats.urgentResends)
+        r.tick(t0 + 1300 + 2600)
+        assertEquals(2, r.stats.urgentResends)
+
+        r.tick(t0 + 3900 + 5200)
+        assertEquals(3, r.stats.urgentResends)
+
+        val ackBare = MeshPacket(MeshType.ACK, 3, 0, 2, 1, crew.crewId, 2, 999, t0 / 1000, ByteArray(0))
+        val ackEncoded = MeshPacket.encode(MeshPacket(MeshType.ACK, 3, 0, 2, 1, crew.crewId, 2, 999, t0 / 1000, crew.seal(ackBare, MeshMessage.encode(MeshMessage.Ack(1, packetId)).second)))
+        r.onFrame(ackEncoded, -70, false, t0 + 10_000)
+
+        assertEquals(0, r.pendingUrgent)
+        r.tick(t0 + 60_000)
+        assertEquals(3, r.stats.urgentResends)
+    }
+
+    @Test fun randomSlotRelayRuleWithRssiTieBreaker() {
+        val crew = CrewKey.create()
+        val rRandom = MeshRouter(1, crew, MeshConfig(relayRule = app.linkfill.core.mesh.RelayRule.RANDOM_SLOT), Random(1), object : MeshListener {})
+        val rFarFirst = MeshRouter(2, crew, MeshConfig(relayRule = app.linkfill.core.mesh.RelayRule.RSSI_FAR_FIRST), Random(1), object : MeshListener {})
+
+        val bare = MeshPacket(MeshType.SOS, 3, 0, 99, 1, crew.crewId, 50, 1, t0 / 1000, ByteArray(0))
+        val enc = MeshPacket.encode(MeshPacket(MeshType.SOS, 3, 0, 99, 1, crew.crewId, 50, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Sos(25.0, 82.0, "help")).second)))
+
+        rRandom.onFrame(enc, -90, false, t0)
+        assertTrue(rRandom.stats.relayScheduled == 1)
+
+        rFarFirst.onFrame(enc, -90, false, t0)
+        assertTrue(rFarFirst.stats.relayScheduled == 1)
+    }
+
+    @Test fun fillerSuppressedWhileUrgentPending() {
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(), Random(1), object : MeshListener {})
+
+        assertNotNull(r.nextFrame(t0, allowFiller = true))
+
+        r.originate(MeshMessage.Sos(25.0, 82.0, "help"), t0)
+        assertTrue(r.hasPendingUrgent())
+
+        val sosFrame = r.nextFrame(t0, allowFiller = true)
+        assertNotNull(sosFrame)
+        assertEquals(MeshType.SOS, MeshPacket.decode(sosFrame!!)!!.type)
+
+        assertNull("filler must be suppressed while urgent message is pending retry", r.nextFrame(t0 + 100, allowFiller = true))
+    }
 }

@@ -43,6 +43,14 @@ tasks.register<JavaExec>("runMeshRange") {
     maxHeapSize = "3g"
 }
 
+// Compare old vs Phase 4 crowd routing rules at 5, 20, 100, and 500 nodes in simulation.
+tasks.register<JavaExec>("runCrowdRouting") {
+    group = "linkfill"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("app.linkfill.core.sim.CrowdRoutingExperimentKt")
+    maxHeapSize = "3g"
+}
+
 // Create the authority (police) signing key: public half bundled in the app, private half + QR in secrets/.
 tasks.register<JavaExec>("makeAuthorityKey") {
     group = "linkfill"

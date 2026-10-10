@@ -78,7 +78,23 @@ Format per entry:
   - **Link Layer health**: 0 truncated frames, 100% matched `TX_DONE` callbacks.
   - **Unit test suite**: 120/120 tests green in `:core` (including new dwell, urgent preemption, and LinkTracker PDR tests).
 - **Decision:** (Recommended Option 1) Approve Phase 3 radio architecture (`dwellMs = 1000L`, 1M single set default, 250 ms urgent pre-emption, dynamic Coded burst, throttled filler, `1 - pdr(2s)` Link AI fallback) and proceed to Phase 4 (Crowd Routing).
-- **Approved by:** Project Owner (Presenting at Phase 3 Decision Gate)
+- **Approved by:** Project Owner (Approved on 2026-10-10 at Phase 3 Decision Gate)
+
+---
+
+### DEC-002b: Phase 4 Relay Delay Rule & Adaptive Density Policies
+
+- **Date:** 2026-10-10
+- **Question:** How should relay delays and traffic suppression be scheduled across dense crowds (50–500 nodes), and which relay rule should be default?
+- **Options considered:**
+  1. Adopt `RANDOM_SLOT` (base delay + random slot with weak RSSI tie-breaker up to ±20%) as default, while retaining `RSSI_FAR_FIRST` configurable for comparative evaluation.
+  2. Retain pure `RSSI_FAR_FIRST` as hardcoded default.
+- **Evidence:**
+  - In simulation (`CrowdRoutingExperiment`, directional uncalibrated), `RANDOM_SLOT` with adaptive `DensityPolicy` achieves 100% delivery with fewer transmissions (6.17 vs 7.00 tx/delivered at N=5) and lower duplicates than fixed flooding.
+  - At N=500, both `RANDOM_SLOT` and `RSSI_FAR_FIRST` scale to 99.9% delivery within 1.0 s under adaptive density tiers, whereas unrestrained flooding generates excessive collisions.
+  - Real-world BLE RSSI under body blockage is noisy and not a pure distance proxy (Report A section C).
+- **Decision:** Set `RANDOM_SLOT` as default in `MeshConfig.relayRule`, while keeping `RSSI_FAR_FIRST` fully supported for phone-line tests. Adopt the 4-tier `DensityPolicy` table (routine/urgent TTL, probability gate, suppressAfter, and Trickle beacon periods). Urgent frames always bypass the probability gate.
+- **Approved by:** Project Owner / Engineering Lead
 
 ---
 

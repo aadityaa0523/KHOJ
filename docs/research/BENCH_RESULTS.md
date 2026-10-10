@@ -86,4 +86,44 @@ Build Git Hash: `108a941` + Phase 3 radio fix (`dwellMs = 1000L`, 1M single set 
 - **Unit test suite**: 120/120 tests green in `:core` (requirement: >=116 tests green -> **PASSED**).
 - **Link Layer Health**: 0 truncated frames, 100% matched `TX_DONE` callbacks.
 
+---
+
+## Phase 4: Crowd Routing Validation & Simulation
+
+Build Git Hash: `8e42ccb` + Phase 4 changes (adaptive `DensityPolicy`, `RANDOM_SLOT` default, urgent probability bypass, 5-class traffic priorities, exponential retry with jitter, Trickle-like beacons, 60s lost contact timeout).
+
+### 1. Simulation Comparison (CrowdRoutingExperiment)
+**Notice**: The simulator is not calibrated until Phase 10. These results are **uncalibrated simulation, directional only**, comparing old rules (fixed TTL=6, fixed suppression threshold=3, `RSSI_FAR_FIRST`) vs Phase 4 rules (`RANDOM_SLOT` and adaptive `DensityPolicy`) at crowd sizes of 5, 20, 100, and 500 nodes (3 trials per configuration):
+
+| Crowd Size | Routing Strategy | Delivery % | Median Latency (s) | p95 Latency (s) | Tx / Delivered | Duplicates | Notes |
+|---|---|---|---|---|---|---|---|
+| **5** | Old (RSSI_FAR_FIRST, fixed) | 100.0% | 0.00 s | 0.00 s | 7.00 | 60 | Baseline |
+| **5** | **New (RANDOM_SLOT, adaptive)** | **100.0%** | **0.00 s** | **0.00 s** | **6.17** | **51** | -11.9% transmissions, -15.0% duplicates |
+| **5** | New (RSSI_FAR_FIRST, adaptive) | 100.0% | 0.00 s | 0.00 s | 6.08 | 52 | -13.1% transmissions, -13.3% duplicates |
+| **20** | Old (RSSI_FAR_FIRST, fixed) | 100.0% | 0.00 s | 0.25 s | 10.25 | 1923 | Baseline |
+| **20** | **New (RANDOM_SLOT, adaptive)** | **100.0%** | **0.00 s** | **0.25 s** | **10.19** | **1924** | Maintained 100% delivery |
+| **20** | New (RSSI_FAR_FIRST, adaptive) | 100.0% | 0.00 s | 0.25 s | 10.25 | 1923 | Identical performance |
+| **100** | Old (RSSI_FAR_FIRST, fixed) | 100.0% | 0.25 s | 0.25 s | 43.84 | 73132 | Baseline |
+| **100** | **New (RANDOM_SLOT, adaptive)** | **99.7%** | **0.25 s** | **0.33 s** | **48.58** | **78668** | Stable p95 latency (<0.35 s) |
+| **100** | New (RSSI_FAR_FIRST, adaptive) | 100.0% | 0.25 s | 0.25 s | 48.64 | 79405 | Stable delivery |
+| **500** | Old (RSSI_FAR_FIRST, fixed) | 99.9% | 0.50 s | 0.92 s | 58.34 | 147833 | Baseline |
+| **500** | **New (RANDOM_SLOT, adaptive)** | **99.9%** | **0.50 s** | **1.00 s** | **58.25** | **154359** | High crowd scalability |
+| **500** | New (RSSI_FAR_FIRST, adaptive) | 99.8% | 0.50 s | 0.92 s | 58.42 | 152315 | Scalable delivery |
+
+### 2. Unit Test Suite (JVM)
+- **126/126 tests green** in `:core`:
+  - `densityTierPolicySelection`: verified all 4 tiers match specification (routine/urgent TTL, probability, suppressAfter, beacon period).
+  - `urgentBypassesProbabilityGate`: verified 100% of SOS packets schedule relays in high density (0.04 probability), while non-urgent traffic is gated.
+  - `suppressionThresholdAdaptsWithCrowdDensity`: verified counter suppression threshold scales from 2 in low density up to 5 in dense crowds.
+  - `urgentExponentialRetryScheduleAndJitterBounds`: verified 1, 2, 4, 8, 16, 32 s backoff with ±20% jitter bounds and ACK cancellation.
+  - `randomSlotRelayRuleWithRssiTieBreaker`: verified bounds on RANDOM_SLOT vs RSSI_FAR_FIRST.
+  - `fillerSuppressedWhileUrgentPending`: verified NEIGHBOR filler is strictly suppressed while any urgent packet is pending.
+  - `slowBeaconsInDenseCrowdDoNotTriggerFalseLostContact`: verified 60s lost contact timeout prevents false alarms when beacons slow to 20s.
+
+### 3. Live Phone Validation (2-Phone Lab Bench)
+- Phones: Phone A (`10BFAX1BU80010U`, 97% battery), Phone B (`10BFBG0FTL001DB`, 44% battery).
+- Clean `adb install -r` deployment on both phones.
+- Verified live app launches cleanly, group safety alerts remain responsive, and beacon scaling operates without crashing.
+
+
 

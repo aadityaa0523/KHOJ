@@ -182,6 +182,10 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     private var nearbyUntil = 0L
     private var lastNeighborMs = 0L
     private var codedBurstUntilMs = 0L
+    private var beaconPeriodMs = 3_000L
+    private var lastBeaconSentMs = 0L
+    private var lastBeaconFix: LocationFix? = null
+    private var lastNeighborCount = 0
     private val internet = InternetRelay(context, scope) { onOtherFrame(it, TransportKind.INTERNET, -100) }
     private val bleHealth = app.linkfill.core.mesh.TransportHealth(TransportKind.BLE)
     // Default radios: Wi-Fi Aware where the phone has it; otherwise Nearby, which reaches Wi-Fi Direct/hotspot underneath.
@@ -506,7 +510,30 @@ class MeshController(private val context: Context, private val scope: CoroutineS
                 find.evaluate(now)
                 if (rewind.running) rewind.tick(now)
                 if (n % 20 == 0L) applyTransports() // every 5 s: follow Wi-Fi, data and direct-sharing changes
-                if (n % (if (r.lowPower) 60 else 12) == 0L) sendBeacon(r, now) // every 3 s; 15 s for a low-power member
+                // Phase 4: Trickle-like beacons (binary exponential growth up to density cap, resets on event)
+                val currentDensity = r.links.density(now)
+                val densityPolicy = r.config.densityPolicy(currentDensity)
+                val densityCap = if (r.lowPower) maxOf(15_000L, densityPolicy.beaconPeriodMs * 3) else densityPolicy.beaconPeriodMs
+
+                val activeNeighbors = r.links.neighbors.values.count { now - it.lastRxMs <= 5_000 }
+                if (activeNeighbors > lastNeighborCount) beaconPeriodMs = 3_000L
+                lastNeighborCount = activeNeighbors
+
+                val curFix = _state.value.myFix
+                val prevFix = lastBeaconFix
+                if (curFix != null && prevFix != null) {
+                    val dist = GapEstimator.distanceM(curFix.latitude, curFix.longitude, prevFix.latitude, prevFix.longitude)
+                    val maxAcc = maxOf(curFix.accuracyM, prevFix.accuracyM).toDouble()
+                    if (dist > maxAcc) beaconPeriodMs = 3_000L
+                }
+
+                val effectivePeriod = if (r.hasPendingUrgent()) (beaconPeriodMs * 2).coerceAtLeast(6_000L) else beaconPeriodMs
+                if (now - lastBeaconSentMs >= effectivePeriod) {
+                    sendBeacon(r, now)
+                    lastBeaconSentMs = now
+                    lastBeaconFix = curFix
+                    beaconPeriodMs = (beaconPeriodMs * 2).coerceAtMost(densityCap)
+                }
                 if (n % 40 == 0L) updatePower(r, now)
                 // A location request made while Android briefly refused permission (screen off at the wrong moment) never
                 // delivers; with no fresh fix for 30 s, ask again (measured: the arrow had no position until a restart).
@@ -529,6 +556,10 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     fun stop() {
         loop?.cancel(); loop = null
         codedBurstUntilMs = 0L
+        beaconPeriodMs = 3_000L
+        lastBeaconSentMs = 0L
+        lastBeaconFix = null
+        lastNeighborCount = 0
         radio.setCodedAdvertising(false)
         radio.stop()
         aware.stop(); nearby?.stop(); pair?.stop(); internet.stop()
@@ -735,6 +766,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
             is MeshMessage.Text -> addFeed(FeedItem(now, name, message.text, "TEXT", hops, mine = false))
             is MeshMessage.Ack -> Unit
             is MeshMessage.Looking -> if (message.targetId == router?.nodeId) {
+                beaconPeriodMs = 3_000L
                 if (seekers.put(originId, now) == null) { notify(context.getString(R.string.looking_for_you, name), context.getString(R.string.looking_for_you_body)); applyTransports() }
             }
         }
@@ -749,12 +781,13 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     /**
      * Two ways a member leaves the group, both with a strong vibration and a notification on every phone in the group
      * (each phone runs this check for every member, so the person who walked off is warned too):
-     * out of the circle (GPS, see [app.linkfill.core.find.Circle]), or out of radio range (silent for 45 s).
+     * out of the circle (GPS, see [app.linkfill.core.find.Circle]), or out of radio range (silent for 60 s, 3x density cap).
      */
     private fun checkLostContact(now: Long) {
         val me = _state.value.myFix
+        val lostTimeoutMs = 60_000L
         for (m in members.values) {
-            if (now - m.heardAt in 45_000..600_000 && lostNotified.add(m.originId)) {
+            if (now - m.heardAt in lostTimeoutMs..600_000 && lostNotified.add(m.originId)) {
                 val title = context.getString(R.string.lost_contact, m.name)
                 val body = context.getString(R.string.last_seen, where(m.lat, m.lon))
                 addFeed(FeedItem(now, m.name, "$title. $body", "LOST", m.hops, mine = false))
@@ -762,8 +795,8 @@ class MeshController(private val context: Context, private val scope: CoroutineS
                 buzz(LEFT_PATTERN)
                 alert(HomeAlert("lost-${m.originId}", title, body, "LOST", m.lat.takeIf { hasPosition(m.lat, m.lon) }, m.lon.takeIf { hasPosition(m.lat, m.lon) }, now))
             }
-            if (now - m.heardAt < 45_000 && alerts.remove("lost-${m.originId}") != null) lostNotified -= m.originId
-            if (me == null || now - m.heardAt >= 45_000 || now - me.fixTimeMs > 30_000 || !hasPosition(m.lat, m.lon)) continue
+            if (now - m.heardAt < lostTimeoutMs && alerts.remove("lost-${m.originId}") != null) lostNotified -= m.originId
+            if (me == null || now - m.heardAt >= lostTimeoutMs || now - me.fixTimeMs > 30_000 || !hasPosition(m.lat, m.lon)) continue
             val d = GapEstimator.distanceM(me.latitude, me.longitude, m.lat, m.lon)
             val circle = _state.value.circleM.toDouble()
             val out = app.linkfill.core.find.Circle.outside(d, me.accuracyM.toDouble(), m.accuracyM.toDouble(), circle, m.originId in outsideCircle)

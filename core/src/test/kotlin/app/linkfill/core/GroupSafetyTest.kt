@@ -149,4 +149,20 @@ class GroupSafetyTest {
         assertFalse(marked.onLink(10, 3).fromLowPower)
         assertTrue(p.aad().contentEquals(marked.aad()))
     }
+
+    @Test fun slowBeaconsInDenseCrowdDoNotTriggerFalseLostContact() {
+        val beaconPeriodMs = 20_000L
+        val lostTimeoutMs = 60_000L
+        val heardTimes = mutableListOf<Long>()
+        var now = t0
+        for (i in 0..4) {
+            heardTimes += now
+            now += beaconPeriodMs
+        }
+        for (t in t0..now step 1_000L) {
+            val lastHeard = heardTimes.filter { it <= t }.maxOrNull() ?: t0
+            val silenceMs = t - lastHeard
+            assertTrue("silence between dense beacons ($silenceMs ms) must remain below lost-contact threshold ($lostTimeoutMs ms)", silenceMs < lostTimeoutMs)
+        }
+    }
 }

@@ -9,7 +9,19 @@ enum class LinkMode(val repeats: Int, val coded: Boolean, val label: String) {
     HIGH(3, true, "Extra copies (3x), long range"),
 }
 
-class MeshConfig(
+/** How relay delays are scheduled (Phase 4). */
+enum class RelayRule { RANDOM_SLOT, RSSI_FAR_FIRST }
+
+/** Adaptive policy parameters for a given crowd density tier (Phase 4). */
+data class DensityPolicy(
+    val routineTtl: Int,
+    val urgentTtl: Int,
+    val relayProbability: Double,
+    val suppressAfter: Int,
+    val beaconPeriodMs: Long,
+)
+
+open class MeshConfig(
     val defaultTtl: Int = 6,
     val urgentRepeatMs: Long = 10_000,
     val urgentMaxSends: Int = 6,
@@ -32,7 +44,16 @@ class MeshConfig(
     val offerEveryMs: Long = 5_000,
     val dwellMs: Long = 1_000L,
     val lowPowerDwellMs: Long = 3_000L,
-)
+    val relayRule: RelayRule = RelayRule.RANDOM_SLOT,
+) {
+    /** Returns adaptive routing parameters for the local crowd density (Phase 4). */
+    open fun densityPolicy(neighbors5s: Int): DensityPolicy = when {
+        neighbors5s < 10 -> DensityPolicy(routineTtl = 4, urgentTtl = 6, relayProbability = 1.0, suppressAfter = 2, beaconPeriodMs = 3_000L)
+        neighbors5s < 50 -> DensityPolicy(routineTtl = 3, urgentTtl = 5, relayProbability = 0.7, suppressAfter = 3, beaconPeriodMs = 6_000L)
+        neighbors5s < 200 -> DensityPolicy(routineTtl = 2, urgentTtl = 4, relayProbability = (8.0 / neighbors5s).coerceAtMost(0.4), suppressAfter = 4, beaconPeriodMs = 12_000L)
+        else -> DensityPolicy(routineTtl = 2, urgentTtl = 3, relayProbability = (8.0 / neighbors5s).coerceAtMost(0.1), suppressAfter = 5, beaconPeriodMs = 20_000L)
+    }
+}
 
 interface MeshListener {
     fun onMessage(originId: Int, message: MeshMessage, hops: Int, rssi: Int, ageS: Long) {}
@@ -99,7 +120,7 @@ class MeshRouter(
     }
 
     /** Resends reuse the original encrypted packet unchanged: a new timestamp under the same nonce would break AES-GCM. */
-    private class Urgent(val packet: MeshPacket, var sends: Int, var lastSent: Long)
+    private class Urgent(val packet: MeshPacket, var sends: Int, var nextRetryAt: Long)
 
     private val queue = ArrayList<Out>()
     private val seen = LinkedHashMap<Long, Long>()
@@ -122,18 +143,29 @@ class MeshRouter(
     private var lastModeUpdate = 0L
 
     /** Sends a crew message. SOS and RALLY are repeated until a crew member acknowledges them. Returns the packet id. */
-    fun originate(message: MeshMessage, now: Long, ttl: Int = config.defaultTtl): Int {
+    fun originate(message: MeshMessage, now: Long, ttl: Int = -1): Int {
         val key = crew ?: error("join a crew before sending")
         val (type, plain) = MeshMessage.encode(message)
         val id = ++packetSeq
-        val bare = MeshPacket(type, ttl, 0, nodeId, 0, key.crewId, nodeId, id, now / 1000, ByteArray(0))
-        val packet = MeshPacket(type, ttl, 0, nodeId, 0, key.crewId, nodeId, id, now / 1000, key.seal(bare, plain))
+        val policy = config.densityPolicy(links.density(now))
+        val isUrgent = type == MeshType.SOS || type == MeshType.ACK
+        val actualTtl = if (ttl > 0) ttl else if (isUrgent) policy.urgentTtl else policy.routineTtl
+        val bare = MeshPacket(type, actualTtl, 0, nodeId, 0, key.crewId, nodeId, id, now / 1000, ByteArray(0))
+        val packet = MeshPacket(type, actualTtl, 0, nodeId, 0, key.crewId, nodeId, id, now / 1000, key.seal(bare, plain))
         seen[packet.key] = now
         stats.originated++
-        val priority = when (type) { MeshType.SOS, MeshType.ACK -> 0; MeshType.RALLY, MeshType.TEXT, MeshType.LOOKING -> 1; else -> 3 }
+        val priority = when (type) {
+            MeshType.SOS -> 0
+            MeshType.ACK -> 1
+            MeshType.BEACON, MeshType.RALLY, MeshType.TEXT, MeshType.LOOKING -> 3
+            else -> 4
+        }
         if (type == MeshType.BEACON) queue.removeAll { !it.isRelay && it.packet.type == MeshType.BEACON } // only the newest position matters
         enqueue(Out(packet, mode.repeats, now, priority, isRelay = false))
-        if (type == MeshType.SOS || type == MeshType.RALLY) urgent[id] = Urgent(packet, 1, now)
+        if (type == MeshType.SOS || type == MeshType.RALLY) {
+            val jitter = (random.nextDouble(-0.2, 0.2) * 1_000L).toLong()
+            urgent[id] = Urgent(packet, 1, now + 1_000L + jitter)
+        }
         carry(packet, now)
         bridge?.invoke(MeshPacket.encode(packet), packet)
         return id
@@ -145,17 +177,29 @@ class MeshRouter(
      * dropped by the packet-level duplicate filter below.
      */
     /**
-     * Sends a public message (not crew-sealed). Found reports and public SOS are repeated every 10 s, up to
-     * 6 times, until [cancelRepeats] is called (when a FOUND_ACK or RESPOND arrives).
+     * Sends a public message (not crew-sealed). Found reports and public SOS are repeated using jittered
+     * exponential backoff, up to 6 times, until [cancelRepeats] is called.
      */
-    fun originatePublic(message: PublicMessage, now: Long, crewId: Int = 0, ttl: Int = config.defaultTtl): Int {
+    fun originatePublic(message: PublicMessage, now: Long, crewId: Int = 0, ttl: Int = -1): Int {
         val (type, body) = PublicMessage.encode(message)
         val id = ++packetSeq
-        val packet = MeshPacket(type, ttl, 0, nodeId, 0, crewId, nodeId, id, now / 1000, body)
+        val policy = config.densityPolicy(links.density(now))
+        val isUrgent = type in setOf(MeshType.PUBLIC_SOS, MeshType.FOUND, MeshType.FOUND_ACK, MeshType.RESPOND, MeshType.OFFICIAL)
+        val actualTtl = if (ttl > 0) ttl else if (isUrgent) policy.urgentTtl else policy.routineTtl
+        val packet = MeshPacket(type, actualTtl, 0, nodeId, 0, crewId, nodeId, id, now / 1000, body)
         seen[packet.key] = now
         stats.originated++
-        enqueue(Out(packet, mode.repeats, now, 0, isRelay = false))
-        if (type == MeshType.FOUND || type == MeshType.PUBLIC_SOS) urgent[id] = Urgent(packet, 1, now)
+        val priority = when (type) {
+            MeshType.PUBLIC_SOS, MeshType.FOUND -> 0
+            MeshType.FOUND_ACK, MeshType.RESPOND -> 1
+            MeshType.OFFICIAL, MeshType.FOUND_NOTICE -> 2
+            else -> 3
+        }
+        enqueue(Out(packet, mode.repeats, now, priority, isRelay = false))
+        if (type == MeshType.FOUND || type == MeshType.PUBLIC_SOS) {
+            val jitter = (random.nextDouble(-0.2, 0.2) * 1_000L).toLong()
+            urgent[id] = Urgent(packet, 1, now + 1_000L + jitter)
+        }
         carry(packet, now)
         bridge?.invoke(MeshPacket.encode(packet), packet)
         return id
@@ -207,10 +251,30 @@ class MeshRouter(
         if (via != TransportKind.INTERNET) bridge?.invoke(bytes, p)
         if (!lowPower) carry(if (p.ttl > 0) p.relayed(nodeId, 0) else p, now)
         if (p.ttl > 0 && !lowPower) {
-            val strength = ((rssi + 95) / 45.0).coerceIn(0.0, 1.0)
-            val delay = config.relayBaseMs + (strength * config.relayRssiSpreadMs).toLong() + random.nextLong(config.relayJitterMs + 1)
-            val urgentType = p.type == MeshType.SOS || p.type == MeshType.ACK || p.type == MeshType.PUBLIC_SOS || p.type == MeshType.OFFICIAL || p.type == MeshType.FOUND || p.type == MeshType.FOUND_ACK
-            val out = Out(p.relayed(nodeId, 0), 1, now + delay, if (urgentType) 0 else 2, isRelay = true)
+            val policy = config.densityPolicy(links.density(now))
+            val urgentType = p.type in setOf(MeshType.SOS, MeshType.ACK, MeshType.PUBLIC_SOS, MeshType.OFFICIAL, MeshType.FOUND, MeshType.FOUND_ACK, MeshType.RESPOND)
+            if (!urgentType && random.nextDouble() >= policy.relayProbability) return
+            val delay = when (config.relayRule) {
+                RelayRule.RANDOM_SLOT -> {
+                    val slotRange = config.relayRssiSpreadMs + config.relayJitterMs
+                    val randomSlot = random.nextLong(slotRange + 1)
+                    val strength = ((rssi + 95) / 45.0).coerceIn(0.0, 1.0)
+                    val tieBreaker = ((strength - 0.5) * 0.4 * slotRange).toLong()
+                    (config.relayBaseMs + randomSlot + tieBreaker).coerceAtLeast(config.relayBaseMs)
+                }
+                RelayRule.RSSI_FAR_FIRST -> {
+                    val strength = ((rssi + 95) / 45.0).coerceIn(0.0, 1.0)
+                    config.relayBaseMs + (strength * config.relayRssiSpreadMs).toLong() + random.nextLong(config.relayJitterMs + 1)
+                }
+            }
+            val priority = when (p.type) {
+                MeshType.SOS, MeshType.PUBLIC_SOS, MeshType.FOUND -> 0
+                MeshType.ACK, MeshType.FOUND_ACK, MeshType.RESPOND -> 1
+                MeshType.OFFICIAL, MeshType.FOUND_NOTICE -> 2
+                MeshType.BEACON, MeshType.RALLY, MeshType.TEXT, MeshType.LOOKING -> 3
+                MeshType.NEIGHBOR -> 4
+            }
+            val out = Out(p.relayed(nodeId, 0), 1, now + delay, priority, isRelay = true)
             out.firstRelay = p.relayId
             pendingRelay[k] = out
             stats.relayScheduled++
@@ -234,9 +298,11 @@ class MeshRouter(
 
     /** Next frame to put on the air. With [allowFiller], an empty link-measurement frame is sent when idle. */
     fun nextFrame(now: Long, allowFiller: Boolean = true): ByteArray? {
+        val policy = config.densityPolicy(links.density(now))
         while (true) {
             val next = queue.filter { it.dueAt <= now }.minWithOrNull(compareBy<Out> { it.priority }.thenBy { it.dueAt }) ?: break
-            if (next.isRelay && config.suppression && next.otherRelays.size >= config.suppressAfter) {
+            val suppressThreshold = if (config.suppression) policy.suppressAfter else Int.MAX_VALUE
+            if (next.isRelay && config.suppression && next.otherRelays.size >= suppressThreshold) {
                 queue.remove(next); pendingRelay.remove(next.packet.key); stats.suppressed++
                 continue
             }
@@ -246,7 +312,7 @@ class MeshRouter(
             stats.framesOut++
             return MeshPacket.encode(next.packet.onLink(nodeId, nextLinkSeq(), lowPower))
         }
-        if (!allowFiller || lowPower) return null
+        if (!allowFiller || lowPower || hasPendingUrgent()) return null
         stats.framesOut++
         return MeshPacket.encode(MeshPacket(MeshType.NEIGHBOR, 0, 0, nodeId, nextLinkSeq(), 0, nodeId, 0, now / 1000, ByteArray(0)))
     }
@@ -256,6 +322,10 @@ class MeshRouter(
     /** True when a priority-0 urgent frame (SOS, ACK, PUBLIC_SOS, FOUND, OFFICIAL) is due for transmission. */
     fun hasUrgentDue(now: Long): Boolean =
         queue.any { it.priority == 0 && it.dueAt <= now }
+
+    /** True when any urgent traffic (priority <= 2 or active urgent retry) is pending. */
+    fun hasPendingUrgent(): Boolean =
+        queue.any { it.priority <= 2 } || urgent.isNotEmpty()
 
     /**
      * Determines whether a new frame should be fetched and transmitted under the Phase 3 dwell rules:
@@ -287,18 +357,23 @@ class MeshRouter(
 
     fun tick(now: Long) {
         for (u in urgent.values.toList()) {
-            if (now - u.lastSent >= config.urgentRepeatMs) {
+            if (now >= u.nextRetryAt) {
                 if (u.sends >= config.urgentMaxSends) { urgent.remove(u.packet.packetId); continue }
                 // Receivers that already have it drop it as a duplicate; new ones in range now get it.
                 queue.firstOrNull { !it.isRelay && it.packet.packetId == u.packet.packetId }?.let { it.repeatsLeft = mode.repeats }
                     ?: enqueue(Out(u.packet, mode.repeats, now, 0, isRelay = false))
-                u.sends++; u.lastSent = now; stats.urgentResends++
+                u.sends++
+                val shift = (u.sends - 1).coerceIn(0, 5)
+                val baseDelay = (1_000L shl shift).coerceAtMost(32_000L)
+                val jitter = (random.nextDouble(-0.2, 0.2) * baseDelay).toLong()
+                u.nextRetryAt = now + baseDelay + jitter
+                stats.urgentResends++
             }
         }
         val it = seen.entries.iterator()
         while (it.hasNext()) if (now - it.next().value > config.seenMemoryMs) it.remove()
         val maxAgeMs = config.maxAgeS * 1000
-        longSeen.values.removeAll { now - it > maxAgeMs + 60_000 }
+        longSeen.entries.removeIf { now - it.value > maxAgeMs + 120_000L }
         carried.values.removeAll { now - it.packet.originTimeS * 1000 > maxAgeMs }
         lastHeardFrom.values.removeAll { now - it > config.newNeighborGapMs * 5 }
         lastOfferTo.values.removeAll { now - it > config.newNeighborGapMs * 5 }

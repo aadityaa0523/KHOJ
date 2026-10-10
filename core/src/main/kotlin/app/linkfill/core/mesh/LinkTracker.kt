@@ -35,6 +35,9 @@ class LinkTracker(private val slotMs: Long = SLOT_MS, private val historyMs: Lon
 
     fun prune(now: Long, goneMs: Long = 30_000) { neighbors.values.removeAll { now - it.lastRxMs > goneMs } }
 
+    /** Number of distinct nodes heard directly over Bluetooth in the last 5 seconds (crowd density estimate). */
+    fun density(now: Long): Int = neighbors.values.count { now - it.lastRxMs <= 5_000 }
+
     fun pdr(id: Int, windowMs: Long, now: Long): Double {
         val n = neighbors[id] ?: return 0.0
         val got = n.frames.count { now - it.timeMs <= windowMs }
