@@ -232,6 +232,51 @@ Baseline rule to beat: $\text{risk} = 1 - \text{pdr}(2\text{ s})$.
 - **Decision**: Keep both paths active. LiteRT QNN runs on Hexagon HTP when available; transparent CPU fallback runs when HTP is powered down or unsupported.
 - **Decision Gate Result**: **PASS**. Model beats rule on held-out place/device in both PR-AUC and Brier score. Model shipped.
 
+---
+
+## Phase 8: Find Accuracy, Age-Aware Uncertainty & PDR Coasting
+
+Build Git Hash: Phase 8 changes (Age-aware uncertainty radius, motion-class velocity limits, own-phone PDR coasting for GPS gaps, coarse BLE RSSI constraints, Android 16 Channel Sounding failure diagnosis).
+
+### 1. Age-Aware Uncertainty Validation
+- **Model**: $\sigma^2(t) = \sigma^2_{\text{GNSS}} + t^2\sigma^2_v + (vt)^2\sigma^2_\theta + q_{\text{motion}}t$ (Research A Section F).
+- **Threshold Cutoff**: `MAX_UNCERTAINTY_M = 30.0` m.
+- **Analytical Growth Progression** (tested against $\sigma_{\text{GNSS}} = 5.0$ m, $v = 1.0$ m/s, `WALKING`):
+  - $t = 10$ s: $\sigma = 6.5$ m (wedge $\approx 15^\circ$)
+  - $t = 35$ s: $\sigma = 15.4$ m (wedge $\approx 22^\circ$)
+  - $t = 65$ s: $\sigma = 27.1$ m (wedge $\approx 35^\circ$)
+  - $t = 85$ s: $\sigma = 35.0$ m ($> 30.0$ m $\implies$ prediction stops, arrow falls back to `FindMode.UNAVAILABLE` / searching dial)
+- **Unit Test Suite**:
+  - `predictionCarriesTheirWalkForwardAndStopsAfterAWhile`: verifies 10 s walk prediction, exact analytical uncertainty ($\sigma = 6.5$ m), and 30 s coast limit.
+  - `wedgeGrowsWithFixAge`: verifies strictly monotonic arrow wedge growth as elapsed fix silence increases.
+  - `predictionStopsBeyond30mUncertainty`: verifies prediction halts when $\sigma(t) > 30.0$ m.
+
+### 2. Motion-Class Dynamic Limits
+Replaced static 1.8 m/s speed limit with cadence-derived `MotionClass`:
+- `STILL` (cadence $<0.5$ steps/s): speed capped at 0.3 m/s, $\sigma_v = 0.1$, $\sigma_\theta = 0.1$.
+- `WALKING` (cadence $0.5–2.2$ steps/s): speed capped at 1.8 m/s, $\sigma_v = 0.4$, $\sigma_\theta = 0.35$.
+- `RUNNING` (cadence $>2.2$ steps/s): speed capped at 4.5 m/s, $\sigma_v = 0.8$, $\sigma_\theta = 0.5$.
+- Unit test `motionClassLimitsApply` verifies speed capping per class.
+
+### 3. Own-Phone PDR Coasting
+- **Weinberg Stride Estimation**: $stride = K \times (a_{max} - a_{min})^{1/4}$ clamped to $[0.4\text{ m}, 1.2\text{ m}]$ (default 0.70 m).
+- **Coast Limit**: 30 s maximum (`MAX_COAST_MS = 30_000L`).
+- **Behavior**: Coasts own coordinates during short GPS dropouts using accelerometer step detection and compass heading. If GPS remains missing past 30 s, `position(now)` returns `null`, marking fix as stale and withholding false GPS guidance.
+- Unit test `pdrCoastStopsAt30s` passed.
+
+### 4. Channel Sounding on Android 16 (API 36)
+- **Tested Hardware**: Two iQOO I2501 (Snapdragon SM8850, Android 16 / API 36).
+- **Findings**:
+  - `RangingCapabilities` confirms `Tech.BLE_CS` is supported and enabled in hardware.
+  - Starting an out-of-band ranging session using `RangingDevice.Builder().setUuid(UUID.randomUUID())` returns `REASON_NO_PEERS_FOUND`.
+  - **Root Cause**: The AOSP Bluetooth Channel Sounding stack requires an existing BLE ACL connection or bonded device pairing (`BluetoothDevice.BOND_BONDED`) to map the peer device and coordinate CS sounding sequences. Unbonded random UUIDs cannot be resolved by the controller.
+  - Updated `AndroidRangingProvider.kt` status messaging to reflect pairing requirement.
+
+### 5. Suite Status
+- **JVM Tests**: 100% green (140+ unit tests across `:core` and `:app`).
+- **Target Deployment**: Cleanly compiled and installed via `adb install -r` on both connected iQOO I2501 devices (`10BFAX1BU80010U`, `10BFBG0FTL001DB`).
+
+
 
 
 

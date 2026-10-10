@@ -170,3 +170,43 @@ Format per entry:
   - Deploy retrained model artifacts: `app/src/main/assets/link_ai_v1.tflite` (1272 bytes), `app/src/main/assets/link_ai_v1.json`, and `core/src/main/resources/app/linkfill/core/mesh/loss_predictor_v2.txt`.
   - Maintain dual-execution path: LiteRT with Qualcomm QNN delegate on Hexagon HTP NPU (~0.904 ms / batch of 16) for background efficiency, with transparent CPU / pure-Kotlin fallback (`LossPredictor`, $<1.5\ \mu\text{s}$) when HTP is unavailable.
 - **Approved by:** Project Owner / Engineering Lead
+
+---
+
+### DEC-004: Phase 8 Find Accuracy, Age-Aware Uncertainty & PDR Coasting
+- **Date:** 2026-10-11
+- **Context:**
+  - In Phase 8, the Find Member direction resolver required replacing fixed velocity limits and uncalibrated linear distance estimates with honest, age-aware uncertainty propagation.
+  - Previously, a fixed 1.8 m/s velocity cap suppressed running or hurried movement, linear uncertainty ($3 + 1.0 \times \text{age}$) drifted without bounds, and own-phone GPS dropouts immediately removed guidance without short dead-reckoning continuity.
+  - Channel Sounding on Android 16 (`RangingManager`) failed on real iQOO I2501 hardware with `REASON_NO_PEERS_FOUND`.
+- **Options considered:**
+  - *Option 1*: Implement analytical age-aware uncertainty propagation, cadence-based motion classes (`STILL`, `WALKING`, `RUNNING`), own-phone PDR coasting with Weinberg stride estimation capped at 30 s, coarse BLE RSSI bands without fake meters, and document Android 16 Bluetooth CS pairing constraints.
+  - *Option 2*: Keep fixed 1.8 m/s cap and simple linear time decay.
+    - Rejected: Research A Section F proved linear uncertainty underestimates drift at longer intervals and overestimates it at short intervals, while a fixed speed cap artificially slows down running targets.
+- **Decision:** Adopt Option 1.
+  1. **Analytical Age-Aware Uncertainty**: Implemented $\sigma^2(t) = \sigma^2_{\text{GNSS}} + t^2\sigma^2_v + (vt)^2\sigma^2_\theta + q_{\text{motion}}t$ in `Predict.kt`.
+     - Prediction stops completely when $\sigma(t) > 30.0$ m (`MAX_UNCERTAINTY_M = 30.0`), dropping the predicted arrow and falling back gracefully to BLE turn/trend modes or the searching dial.
+     - Arrow uncertainty wedge widens monotonically with fix age.
+  2. **Motion Classes**: Replaced 1.8 m/s cap with `MotionClass`:
+     - `STILL`: max speed 0.3 m/s, $\sigma_v = 0.1$, $\sigma_\theta = 0.1$
+     - `WALKING`: max speed 1.8 m/s, $\sigma_v = 0.4$, $\sigma_\theta = 0.35$
+     - `RUNNING`: max speed 4.5 m/s, $\sigma_v = 0.8$, $\sigma_\theta = 0.5$
+     - Cadence calculated from accelerometer steps in `MotionTracker`: `< 0.5` steps/s = `STILL`, `0.5–2.2` = `WALKING`, `> 2.2` = `RUNNING`.
+  3. **Own-Phone PDR Coasting**: Implemented `OwnPdrTracker` for short GPS gaps (up to 30 s):
+     - Dynamically computes stride via the Weinberg formula $stride = K \times (a_{max} - a_{min})^{1/4}$ clamped to $[0.4\text{ m}, 1.2\text{ m}]$ (default 0.70 m).
+     - Steps integrated along true heading.
+     - Coasts own position between GPS fixes up to 30 s (`MAX_COAST_MS = 30_000L`). Beyond 30 s, coasting ceases (`position(now)` returns `null`), marking GPS as stale and preventing phantom drift.
+  4. **BLE RSSI**: Coarse proximity bands (`VERY_CLOSE`, `NEAR`, `MEDIUM`, `FAR`) strictly maintained. RSSI is never converted into meters on a map.
+  5. **Channel Sounding Findings**:
+     - On AOSP Android 16 (API 36 / Snapdragon SM8850), `RangingManager` Channel Sounding procedures require an established BLE ACL connection or bonded device pairing (`BluetoothDevice.BOND_BONDED`) to negotiate sounding subevents.
+     - Calling `RangingDevice.Builder().setUuid(UUID.randomUUID())` against unbonded devices causes the Bluetooth stack to return `REASON_NO_PEERS_FOUND`.
+     - Documented in `AndroidRangingProvider.kt` status reporting and system architecture.
+- **Validation:**
+  - `predictionCarriesTheirWalkForwardAndStopsAfterAWhile`: 1 m/s walk carried 10 s forward, analytical $\sigma(10) = 6.5$ m, null beyond 30 m uncertainty, 30 s coast limit verified.
+  - `wedgeGrowsWithFixAge`: verifies monotonic widening of arrow wedge with silence duration.
+  - `predictionStopsBeyond30mUncertainty`: verifies prediction halts at $\sigma(t) > 30.0$ m and resolver falls back cleanly to `FindMode.UNAVAILABLE`.
+  - `motionClassLimitsApply`: verifies speed caps for `STILL` (0.3 m/s), `WALKING` (1.8 m/s), and `RUNNING` (4.5 m/s).
+  - `pdrCoastStopsAt30s`: verifies own-phone PDR path integration, Weinberg formula, and 30 s hard cutoff.
+  - 100% green test suite across `:core` and `:app`. Debug APK built and installed on both test phones.
+- **Approved by:** Project Owner / Engineering Lead
+

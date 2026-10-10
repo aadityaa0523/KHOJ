@@ -80,6 +80,7 @@ data class FindInputs(
     val turn: WalkFix? = null,
     /** Their recent positions, oldest first, for predicting where they are when updates stop. */
     val targetTrack: List<LocFix> = emptyList(),
+    val motionClass: MotionClass = MotionClass.WALKING,
 )
 
 data class FindState(
@@ -138,7 +139,7 @@ object FindResolver {
         val h = i.heading?.takeIf { i.now - it.atMs <= COMPASS_FRESH_MS } ?: return s
         val me = i.me ?: return s
         val t = i.target?.takeIf { i.now - it.atMs <= PREDICT_MAX_MS } ?: return s
-        val p = Predict.position(i.targetTrack.ifEmpty { listOf(t) }, i.now) ?: return s
+        val p = Predict.position(i.targetTrack.ifEmpty { listOf(t) }, i.now, i.motionClass) ?: return s
         val unc = (Bearing.uncertaintyDeg(Bearing.distanceM(me, p), me.accuracyM, p.accuracyM) + h.uncertaintyDeg).coerceAtMost(180.0)
         return s.copy(arrowDeg = Angles.relative(Bearing.trueBearing(me, p), h.trueDeg), arrowUncertaintyDeg = unc,
             arrowSource = if (i.now - t.atMs <= TARGET_RECENT_MS) Source.GPS else Source.PREDICTED)
@@ -155,8 +156,9 @@ object FindResolver {
         val freshness = tAge?.let { if (it <= TARGET_LIVE_MS) Freshness.LIVE else if (it <= TARGET_RECENT_MS) Freshness.RECENT else Freshness.STALE }
         val rssi = i.rssi?.takeIf { it.proximity != null && it.confidence >= MIN_RSSI_CONFIDENCE }
         if (i.rssi != null && rssi == null && i.rssi.ageMs <= 10_000) notes += Note.RSSI_LOW_CONFIDENCE
-        val headingOk = i.heading != null && i.now - i.heading.atMs <= HEADING_FRESH_MS && i.heading.uncertaintyDeg <= MAX_HEADING_UNCERTAINTY_DEG
-        if (i.heading != null && !headingOk) notes += Note.HEADING_UNRELIABLE
+        val head = i.heading
+        val headingOk = head != null && i.now - head.atMs <= HEADING_FRESH_MS && head.uncertaintyDeg <= MAX_HEADING_UNCERTAINTY_DEG
+        if (head != null && !headingOk) notes += Note.HEADING_UNRELIABLE
 
         // GPS-derived direction, if both fixes and the heading allow a defensible one.
         val me = i.me?.takeIf { i.now - it.atMs <= ME_FRESH_MS }
@@ -174,8 +176,8 @@ object FindResolver {
                 unc > MAX_WIDE_ARROW_DEG -> notes += Note.GPS_DIRECTION_UNCERTAIN
                 !headingOk -> Unit
                 else -> {
-                    gpsArrow = Angles.relative(Bearing.trueBearing(me, tFix), i.heading!!.trueDeg)
-                    gpsArrowUnc = unc + i.heading.uncertaintyDeg // errors add; do not pretend they cancel
+                    gpsArrow = Angles.relative(Bearing.trueBearing(me, tFix), head.trueDeg)
+                    gpsArrowUnc = unc + head.uncertaintyDeg // errors add; do not pretend they cancel
                 }
             }
         } else if (tFix != null && tAge != null && tAge > TARGET_RECENT_MS) notes += Note.TARGET_POSITION_OLD
@@ -185,7 +187,7 @@ object FindResolver {
             val az = ranging.azimuthDeg
             if (az != null && ranging.azimuthConfidence != null && ranging.azimuthConfidence != Level.LOW && i.trustRangingAngle) {
                 // Keep the arrow right while the phone turns between the measurement and now.
-                val turned = if (headingOk && ranging.headingTrueAtMeasurementDeg != null) Angles.diff(i.heading!!.trueDeg, ranging.headingTrueAtMeasurementDeg) else 0.0
+                val turned = if (headingOk && ranging.headingTrueAtMeasurementDeg != null) Angles.diff(head.trueDeg, ranging.headingTrueAtMeasurementDeg) else 0.0
                 return FindState(FindMode.PRECISION_DIRECTION, ranging.distanceM, null, ranging.source, Angles.normalize180(az - turned), null, ranging.source,
                     rssi?.proximity, rssi?.trend ?: Trend.UNKNOWN, freshness, tAge, ranging.distanceConfidence, notes)
             }
@@ -193,8 +195,8 @@ object FindResolver {
             // Distances measured while walking can supply a direction when the hardware does not.
             val walk = i.walk?.takeIf { i.now - it.atMs <= RANGING_FRESH_MS }
             if (walk != null && headingOk && walk.uncertaintyDeg <= MAX_ARROW_UNCERTAINTY_DEG) {
-                return FindState(FindMode.RANGE_WALK, ranging.distanceM, null, ranging.source, Angles.relative(walk.bearingTrueDeg, i.heading!!.trueDeg),
-                    walk.uncertaintyDeg + i.heading.uncertaintyDeg, Source.RANGE_WALK, rssi?.proximity, rssi?.trend ?: Trend.UNKNOWN, freshness, tAge, ranging.distanceConfidence, notes)
+                return FindState(FindMode.RANGE_WALK, ranging.distanceM, null, ranging.source, Angles.relative(walk.bearingTrueDeg, head.trueDeg),
+                    walk.uncertaintyDeg + head.uncertaintyDeg, Source.RANGE_WALK, rssi?.proximity, rssi?.trend ?: Trend.UNKNOWN, freshness, tAge, ranging.distanceConfidence, notes)
             }
             when (i.walkIssue) {
                 WalkIssue.WALK_MORE, WalkIssue.NOT_ENOUGH_SAMPLES -> notes += Note.WALK_MORE
@@ -237,11 +239,13 @@ object FindResolver {
 
         // Tier 4: their positions stopped: point at where they probably are now, wedge widening with the gap.
         if (tFix != null && tAge != null && tAge <= PREDICT_MAX_MS) {
-            val p = Predict.position(i.targetTrack.ifEmpty { listOf(tFix) }, i.now)!!
-            val dist = i.me?.let { Bearing.distanceM(it, p) }
-            return FindState(FindMode.PREDICTED, dist, dist?.let { kotlin.math.sqrt(i.me!!.accuracyM * i.me.accuracyM + p.accuracyM * p.accuracyM) },
-                if (dist != null) Source.PREDICTED else null, predicted?.first, predicted?.second, predicted?.let { Source.PREDICTED },
-                null, Trend.UNKNOWN, freshness, tAge, null, notes, lastKnownBearingTrueDeg = i.me?.let { Bearing.trueBearing(it, p) })
+            val p = Predict.position(i.targetTrack.ifEmpty { listOf(tFix) }, i.now, i.motionClass)
+            if (p != null) {
+                val dist = me?.let { Bearing.distanceM(it, p) }
+                return FindState(FindMode.PREDICTED, dist, dist?.let { kotlin.math.sqrt(me.accuracyM * me.accuracyM + p.accuracyM * p.accuracyM) },
+                    if (dist != null) Source.PREDICTED else null, predicted?.first, predicted?.second, predicted?.let { Source.PREDICTED },
+                    null, Trend.UNKNOWN, freshness, tAge, null, notes, lastKnownBearingTrueDeg = me?.let { Bearing.trueBearing(it, p) })
+            }
         }
         return FindState(FindMode.UNAVAILABLE, null, null, null, null, null, null, null, Trend.UNKNOWN, null, null, null, notes)
     }
@@ -251,7 +255,7 @@ object FindResolver {
         val tFix = i.target ?: return null
         if (!headingOk || i.now - tFix.atMs > PREDICT_MAX_MS) return null
         val me = i.me?.takeIf { i.now - it.atMs <= ME_FRESH_MS } ?: return null
-        val p = Predict.position(i.targetTrack.ifEmpty { listOf(tFix) }, i.now) ?: return null
+        val p = Predict.position(i.targetTrack.ifEmpty { listOf(tFix) }, i.now, i.motionClass) ?: return null
         val d = Bearing.distanceM(me, p)
         val unc = Bearing.uncertaintyDeg(d, me.accuracyM, p.accuracyM) + i.heading!!.uncertaintyDeg
         if (unc > MAX_WIDE_ARROW_DEG) return null

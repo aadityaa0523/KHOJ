@@ -36,16 +36,28 @@ class StepDetector(private val minGapMs: Long = 280, private val threshold: Doub
     private var prev2 = 0.0
     private var prevT = 0L
     private var lastStep = Long.MIN_VALUE / 2
+    private var windowMax = 0.0
+    private var windowMin = Double.MAX_VALUE
+    var lastStrideM: Double = Weinberg.DEFAULT_STRIDE_M
+        private set
 
     /** Returns true when a step is detected (reported one sample late, at the sample after the peak). */
     fun add(tMs: Long, ax: Double, ay: Double, az: Double): Boolean {
         val mag = sqrt(ax * ax + ay * ay + az * az)
         gravity += 0.02 * (mag - gravity)
         val dyn = mag - gravity
+        if (dyn > windowMax) windowMax = dyn
+        if (dyn < windowMin) windowMin = dyn
         val peak = prev > prev2 && prev >= dyn && prev > threshold
         val t = prevT
         prev2 = prev; prev = dyn; prevT = tMs
-        if (peak && t - lastStep >= minGapMs) { lastStep = t; return true }
+        if (peak && t - lastStep >= minGapMs) {
+            lastStep = t
+            lastStrideM = Weinberg.strideLengthM(windowMax, windowMin)
+            windowMax = 0.0
+            windowMin = Double.MAX_VALUE
+            return true
+        }
         return false
     }
 }

@@ -187,12 +187,13 @@ class FindTest {
     }
 
     @Test fun silentTargetGetsAnArrowToItsPredictedPositionWithAWideningWedge() {
-        val s = FindResolver.resolve(inputs(tgt = target(200.0, age = 90_000)))
+        val s = FindResolver.resolve(inputs(tgt = target(200.0, age = 35_000)))
         assertEquals(FindMode.PREDICTED, s.mode); assertEquals(Source.PREDICTED, s.arrowSource)
         assertEquals(0.0, s.arrowDeg!!, 1.0); assertEquals(Freshness.STALE, s.targetFreshness)
         assertTrue(Note.TARGET_POSITION_OLD in s.notes)
-        val longer = FindResolver.resolve(inputs(tgt = target(200.0, age = 150_000)))
+        val longer = FindResolver.resolve(inputs(tgt = target(200.0, age = 65_000)))
         assertTrue("longer silence, wider wedge", longer.arrowUncertaintyDeg!! > s.arrowUncertaintyDeg!!)
+        assertEquals("stops when uncertainty exceeds 30m", FindMode.UNAVAILABLE, FindResolver.resolve(inputs(tgt = target(200.0, age = 90_000))).mode)
         assertEquals("too old to predict", FindMode.UNAVAILABLE, FindResolver.resolve(inputs(tgt = target(200.0, age = 11 * 60_000L))).mode)
     }
 
@@ -283,11 +284,88 @@ class FindTest {
         val track = listOf(LocFix(la1, lo1, 3.0, t0 - 30_000), LocFix(la2, lo2, 3.0, t0 - 10_000))
         val p = app.linkfill.core.find.Predict.position(track, t0)!!
         assertEquals(30.0, app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, p.lat, p.lon), 0.5) // 10 s more at 1 m/s
-        assertEquals(13.0, p.accuracyM, 1e-6) // 3 m fix + 1 m/s for 10 s
-        val far = app.linkfill.core.find.Predict.position(track, t0 + 120_000)!!
+        assertEquals(6.5, p.accuracyM, 0.1) // Age-aware uncertainty: sqrt(3^2 + 10^2*0.4^2 + 10^2*0.35^2 + 0.5*10) = 6.5 m
+        // At 120 s elapsed, uncertainty exceeds 30 m so position returns null
+        assertNull(app.linkfill.core.find.Predict.position(track, t0 + 120_000))
+        // With unbounded uncertainty threshold, coasts at most 30 s
+        val far = app.linkfill.core.find.Predict.position(track, t0 + 120_000, maxUncertaintyM = Double.MAX_VALUE)!!
         assertEquals("coasts at most 30 s", 50.0, app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, far.lat, far.lon), 0.5)
         val jitter = listOf(LocFix(la1, lo1, 8.0, t0 - 30_000), LocFix(la1 + 1e-5, lo1, 8.0, t0 - 10_000)) // 1 m of GPS noise
         assertEquals(1.1, app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, app.linkfill.core.find.Predict.position(jitter, t0)!!.lat, lo1), 0.2)
+    }
+
+    @Test fun wedgeGrowsWithFixAge() {
+        val s35 = FindResolver.resolve(inputs(tgt = target(200.0, age = 35_000)))
+        val s50 = FindResolver.resolve(inputs(tgt = target(200.0, age = 50_000)))
+        val s65 = FindResolver.resolve(inputs(tgt = target(200.0, age = 65_000)))
+        assertEquals(FindMode.PREDICTED, s35.mode)
+        assertEquals(FindMode.PREDICTED, s50.mode)
+        val u35 = s35.arrowUncertaintyDeg!!
+        val u50 = s50.arrowUncertaintyDeg!!
+        val u65 = s65.arrowUncertaintyDeg!!
+        assertTrue("Wedge widens between 35s and 50s", u50 > u35)
+        assertTrue("Wedge widens between 50s and 65s", u65 > u50)
+    }
+
+    @Test fun predictionStopsBeyond30mUncertainty() {
+        // Fix with 5 m accuracy: at age 85 s, sigma is ~35 m (> 30 m)
+        val s85 = FindResolver.resolve(inputs(tgt = target(200.0, age = 85_000)))
+        assertEquals("Prediction stops when uncertainty exceeds 30m", FindMode.UNAVAILABLE, s85.mode)
+        assertNull(s85.arrowDeg)
+
+        // Directly verify Predict.position returns null when uncertainty > 30m
+        val track = listOf(LocFix(17.0, 78.0, 5.0, t0 - 85_000))
+        assertNull(app.linkfill.core.find.Predict.position(track, t0))
+        // But with maxUncertaintyM = 40.0, it is non-null
+        val posWithHigherThreshold = app.linkfill.core.find.Predict.position(track, t0, maxUncertaintyM = 40.0)
+        assertTrue(posWithHigherThreshold != null)
+    }
+
+    @Test fun motionClassLimitsApply() {
+        val (la1, lo1) = app.linkfill.core.estimate.GapEstimator.offset(17.0, 78.0, 0.0, 0.0)
+        val (la2, lo2) = app.linkfill.core.estimate.GapEstimator.offset(17.0, 78.0, 60.0, 0.0) // 60 m in 10 s = 6 m/s
+        val track = listOf(LocFix(la1, lo1, 3.0, t0 - 20_000), LocFix(la2, lo2, 3.0, t0 - 10_000))
+
+        val still = app.linkfill.core.find.Predict.position(track, t0, motionClass = app.linkfill.core.find.MotionClass.STILL)!!
+        val walking = app.linkfill.core.find.Predict.position(track, t0, motionClass = app.linkfill.core.find.MotionClass.WALKING)!!
+        val running = app.linkfill.core.find.Predict.position(track, t0, motionClass = app.linkfill.core.find.MotionClass.RUNNING)!!
+
+        val dStill = app.linkfill.core.estimate.GapEstimator.distanceM(la2, lo2, still.lat, still.lon)
+        val dWalking = app.linkfill.core.estimate.GapEstimator.distanceM(la2, lo2, walking.lat, walking.lon)
+        val dRunning = app.linkfill.core.estimate.GapEstimator.distanceM(la2, lo2, running.lat, running.lon)
+
+        assertEquals("STILL caps speed at 0.3 m/s", 3.0, dStill, 0.5) // 0.3 m/s * 10 s = 3 m
+        assertEquals("WALKING caps speed at 1.8 m/s", 18.0, dWalking, 0.5) // 1.8 m/s * 10 s = 18 m
+        assertEquals("RUNNING caps speed at 4.5 m/s", 45.0, dRunning, 0.5) // 4.5 m/s * 10 s = 45 m
+    }
+
+    @Test fun pdrCoastStopsAt30s() {
+        val tracker = app.linkfill.core.find.OwnPdrTracker(defaultStrideM = 0.70)
+        val fix = LocFix(17.0, 78.0, 4.0, t0)
+        tracker.onFix(fix)
+
+        // 10 steps north
+        repeat(10) { tracker.onStep(0.0) }
+        assertEquals(7.0, tracker.northM, 1e-9)
+        assertEquals(0.0, tracker.eastM, 1e-9)
+
+        // Within 30 s: valid coasted position
+        val coast10 = tracker.position(t0 + 10_000L)!!
+        val d10 = app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, coast10.lat, coast10.lon)
+        assertEquals(7.0, d10, 0.2)
+        assertTrue("Accuracy expands with PDR drift", coast10.accuracyM > 4.0)
+
+        // At 30 s: still coasting
+        val coast30 = tracker.position(t0 + 30_000L)
+        assertTrue(coast30 != null)
+
+        // Beyond 30 s: PDR coast stops!
+        val coast31 = tracker.position(t0 + 30_001L)
+        assertNull("PDR coast stops beyond 30 s", coast31)
+
+        // Verify Weinberg formula
+        val stride = app.linkfill.core.find.Weinberg.strideLengthM(12.0, 8.0)
+        assertTrue("Weinberg stride is within realistic bounds", stride in 0.5..0.85)
     }
 
     @Test fun veryCloseBluetoothOverridesAnUncertainGpsArrow() {

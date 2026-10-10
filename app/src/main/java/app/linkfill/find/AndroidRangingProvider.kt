@@ -195,7 +195,7 @@ class AndroidRangingSession(
     private fun reasonText(r: Int) = when (r) {
         RangingSession.Callback.REASON_LOCAL_REQUEST -> "stopped here"
         RangingSession.Callback.REASON_REMOTE_REQUEST -> "stopped by the other phone"
-        RangingSession.Callback.REASON_NO_PEERS_FOUND -> "peer not found"
+        RangingSession.Callback.REASON_NO_PEERS_FOUND -> "peer not found (Bluetooth pairing/bonding required for Channel Sounding)"
         RangingSession.Callback.REASON_SYSTEM_POLICY -> "blocked by system policy"
         RangingSession.Callback.REASON_UNSUPPORTED -> "not supported by one of the phones"
         else -> "unknown reason ($r)"

@@ -10,6 +10,7 @@ import app.linkfill.core.find.FindState
 import app.linkfill.core.find.HeadingFix
 import app.linkfill.core.find.ImprovementCue
 import app.linkfill.core.find.LocFix
+import app.linkfill.core.find.OwnPdrTracker
 import app.linkfill.core.find.RangeBearingEstimator
 import app.linkfill.core.find.RangeSample
 import app.linkfill.core.find.StepIntegrator
@@ -141,7 +142,9 @@ class FindMemberSession(private val context: Context, private val host: Host) {
     private var walkIssue: WalkIssue? = null
     private var walkFix: WalkFix? = null
     private var lastSolveMs = 0L
-    private val motion = MotionTracker(context) { now -> onStep(now) }
+    private val ownPdr = OwnPdrTracker()
+    private var lastMyFix: LocFix? = null
+    private val motion = MotionTracker(context) { now, strideM -> onStep(now, strideM) }
 
     private var rangingSession: Any? = null
     private var transport: Any? = null
@@ -163,6 +166,7 @@ class FindMemberSession(private val context: Context, private val host: Host) {
         rssi.reset(); smoother.reset(); cue.reset(); lastRanging = null; rangingTech = null
         spin.reset(); turnFix = null; track.clear(); onTarget = false
         steps.reset(); walker.reset(); walkFix = null; walkIssue = null; lastSolveMs = 0
+        ownPdr.reset(); lastMyFix = null
         motion.start()
         framesHeard1m = 0; framesHeardCoded = 0; lastHeardMs = 0; lastMode = null; requestsSent = 0
         phase = LinkPhase.IDLE; phaseDetail = ""
@@ -307,10 +311,11 @@ class FindMemberSession(private val context: Context, private val host: Host) {
     }
 
     /** One walking step: move along my current true heading, if the compass can be trusted right now. */
-    private fun onStep(now: Long) {
+    private fun onStep(now: Long, strideM: Double = 0.70) {
         val h = host.heading() ?: return
         if (now - h.atMs > FindResolver.HEADING_FRESH_MS || h.uncertaintyDeg > FindResolver.MAX_HEADING_UNCERTAINTY_DEG) return
         steps.step(h.trueDeg)
+        ownPdr.onStep(h.trueDeg, strideM)
     }
 
     private fun deliverToTransport(data: ByteArray) {
@@ -359,7 +364,16 @@ class FindMemberSession(private val context: Context, private val host: Host) {
 
         val m = host.member(targetId)
         val mine = host.myFix()
-        val me = mine?.let { LocFix(it.latitude, it.longitude, it.accuracyM.toDouble(), it.fixTimeMs) }
+        val rawMe = mine?.let { LocFix(it.latitude, it.longitude, it.accuracyM.toDouble(), it.fixTimeMs) }
+        if (rawMe != null && (lastMyFix == null || rawMe.atMs > lastMyFix!!.atMs)) {
+            lastMyFix = rawMe
+            ownPdr.onFix(rawMe)
+        }
+        val me = if (rawMe != null && now - rawMe.atMs <= FindResolver.ME_FRESH_MS) {
+            rawMe
+        } else {
+            ownPdr.position(now) ?: rawMe
+        }
         val target = m?.takeIf { app.linkfill.mesh.MeshController.hasPosition(it.lat, it.lon) }?.let { LocFix(it.lat, it.lon, it.accuracyM.toDouble(), it.heardAt) }
         val snap = rssi.snapshot(now).takeIf { it.samples > 0 }
         val newest = lastRanging
@@ -375,7 +389,8 @@ class FindMemberSession(private val context: Context, private val host: Host) {
         val turn = spin.solve(now)
         if (target != null && track.lastOrNull()?.atMs != target.atMs) { track.addLast(target); while (track.size > 20) track.removeFirst() }
         turn.bearingTrueDeg?.let { b -> turnFix = WalkFix(b, turn.uncertaintyDeg!!, Double.NaN, now) }
-        val state = FindResolver.resolve(FindInputs(now, lastRanging, snap, me, target, host.heading(), host.trustAngle(), walkFix, walkIssue, turnFix, track.toList()))
+        val motionClass = motion.motionClass(now)
+        val state = FindResolver.resolve(FindInputs(now, lastRanging, snap, me, target, host.heading(), host.trustAngle(), walkFix, walkIssue, turnFix, track.toList(), motionClass))
         // AirTag-style confirmation: one buzz when the arrow swings onto the person.
         val nowOn = FindResolver.isOnTarget(state.arrowDeg)
         if (nowOn && !onTarget) host.vibrate()
