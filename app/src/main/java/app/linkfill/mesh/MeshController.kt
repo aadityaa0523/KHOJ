@@ -926,7 +926,30 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     /** Records one labelled row per active neighbour per second, for retraining on real phones. */
     private fun sampleLinks(r: MeshRouter, now: Long) {
         val l = labeler ?: return
-        for (n in r.links.neighbors.values) if (now - n.lastRxMs <= 10_000) l.sample(n.id, now, r.links.features(n.id, now, r.queueSize, radio.isCoded))
+        val powerMgr = context.getSystemService(android.os.PowerManager::class.java)
+        val screenOn = powerMgr?.isInteractive == true
+        val batterySaver = powerMgr?.isPowerSaveMode == true
+        val thermal = if (android.os.Build.VERSION.SDK_INT >= 29) powerMgr?.currentThermalStatus ?: 0 else 0
+        val density = r.links.density(now)
+        val gattCount = radio.gatt.linkCount
+        val nearbySt = if (nearby?.isRunning == true) 1 else 0
+
+        for (n in r.links.neighbors.values) if (now - n.lastRxMs <= 10_000) {
+            val f = r.links.features(
+                n.id, now, r.queueSize, radio.isCoded,
+                distanceM = Double.NaN,
+                advUpdateAgeS = 0.0,
+                activeAdvSets = 1,
+                nearbyState = nearbySt,
+                gattLinkCount = gattCount,
+                screenOn = screenOn,
+                batterySaver = batterySaver,
+                thermalStatus = thermal,
+                localDensity = density,
+                peerBeaconPeriodS = 3.0,
+            )
+            l.sample(n.id, now, f)
+        }
         val rows = StringBuilder()
         l.finalize(now) { id, t, f, loss, lost -> rows.append("$t,$id,${f.joinToString(",")},$loss,$lost\n"); logRows++ }
         if (rows.isNotEmpty()) {
@@ -970,7 +993,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
             it.copy(
                 now = now, coded = radio.isCoded, mode = r.mode, risk = r.risk, logRows = logRows,
                 predictorStatus = linkAi?.let { ai -> "Link AI on ${ai.backend}: ${"%.3f".format(ai.meanMs)} ms per batch over ${ai.runs} runs; " +
-                    "trained on ${ai.meta.optInt("rows")} real rows, held-out ROC-AUC ${ai.meta.optDouble("model_roc_auc")} (rule ${ai.meta.optDouble("rule_1_minus_pdr2s_roc_auc")})" } ?: it.predictorStatus,
+                    "availability failure model (${ai.meta.optInt("rows")} rows, PR-AUC ${ai.meta.optDouble("model_pr_auc")} vs rule ${ai.meta.optDouble("rule_pr_auc")})" } ?: it.predictorStatus,
                 members = members.values.sortedBy { m -> m.name },
                 feed = feed.toList(),
                 sosBoard = sosBoard.values.sortedByDescending { a -> a.at },

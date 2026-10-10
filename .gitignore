@@ -6,4 +6,6 @@ local.properties
 .kotlin/
 secrets/
 *.csv
+!training/data/*.csv
 tools/bench/logs/
+

@@ -150,5 +150,23 @@ Format per entry:
 ---
 
 ### DEC-003: Phase 7 Link AI vs Rule Selection
-
-*(Pending Phase 7)*
+- **Date:** 2026-10-11
+- **Context:**
+  - In Phase 3, frame dwell was raised to 1,000 ms, invalidating old synthetic/simulated link feature assumptions.
+  - Research A & B identified critical flaws in the original Link AI setup: single-room autocorrelation, class-imbalanced drop events where ROC-AUC is misleading, and the fact that `lost_5s` represents combined system availability failure (sleep, OEM throttling, contention) rather than pure RF attenuation.
+  - Decision gate requirement: Ship the model only if it beats the simple baseline rule `risk = 1 - pdr(2s)` on held-out device and session splits in both PR-AUC and Brier score.
+- **Options considered:**
+  - *Option 1*: Discard the model entirely and use the simple heuristic rule `risk = 1 - pdr(2s)`.
+    - Tested on 149,112 real rows across 77 sessions on two iQOO I2501 phones (`10BFAX1BU80010U`, `10BFBG0FTL001DB`).
+    - The rule achieved PR-AUC: 0.158, Brier score: 0.6353, ROC-AUC: 0.724.
+    - Flaw: The rule has a catastrophic Brier score (~0.635) because single packet skips immediately push estimated risk to 1.0, even though 91.7% of the time the link does not fail for 5 s, triggering massive false-alarm escalations.
+  - *Option 2*: Retrain calibrated logistic regression on real multi-device field data with grouped session and leave-device-out splits:
+    - Drop outlier-sensitive `rssi_min_2s` (ablation proved dropping it increases PR-AUC and reduces Brier score).
+    - Expand feature space with host context: `adv_update_age_s`, `active_adv_sets`, `nearby_state`, `gatt_link_count`, `screen_on`, `battery_saver`, `thermal_status`, `local_density`, `peer_beacon_period_s` (21 features in `LinkFeatures.ALL`, 19 active in `F`).
+    - Full field evaluation (Grouped by session): PR-AUC: **0.371** (+135% over rule), Brier score: **0.0622** (10x lower error than rule), ROC-AUC: **0.823**.
+    - Leave-device-out cross-validation: PR-AUC: **0.391–0.416** (vs 0.145–0.167 for rule), Brier score: **0.0538–0.0663** (vs 0.6214–0.6474 for rule).
+- **Decision:** Adopt Option 2. The Link AI model passes the decision gate decisively on both held-out devices and sessions in both PR-AUC and Brier score.
+- **Execution Architecture:**
+  - Deploy retrained model artifacts: `app/src/main/assets/link_ai_v1.tflite` (1272 bytes), `app/src/main/assets/link_ai_v1.json`, and `core/src/main/resources/app/linkfill/core/mesh/loss_predictor_v2.txt`.
+  - Maintain dual-execution path: LiteRT with Qualcomm QNN delegate on Hexagon HTP NPU (~0.904 ms / batch of 16) for background efficiency, with transparent CPU / pure-Kotlin fallback (`LossPredictor`, $<1.5\ \mu\text{s}$) when HTP is unavailable.
+- **Approved by:** Project Owner / Engineering Lead

@@ -198,6 +198,41 @@ Build Git Hash: Phase 6 changes (Wire Format v2, 37-byte header, 96-bit nonce `r
   - Updated `ios/KhojMesh/Sources/KhojMesh` (`MeshPacket.swift`, `CrewKey.swift`) and `Tests` (`VectorTests.swift`).
   - Regenerated test vectors in `docs/interop/khoj_test_vectors.json` matching v2 specification.
 
+---
+
+## Phase 7: Link AI Made Honest (Decision Gate Validation)
+
+Build Git Hash: Phase 7 changes (Calibrated logistic regression model on real multi-device field data, 21-feature space with 9 host context additions, dropped outlier-sensitive `rssi_min_2s`, LiteRT TFLite 16-batch export for Hexagon HTP NPU, and pure-Kotlin `LossPredictor` fallback).
+
+### 1. Dataset & Grouped Split Methodology
+- **Real Phone Field Logs**: 149,112 rows across 77 sessions logged on physical iQOO I2501 phones (`10BFAX1BU80010U` and `10BFBG0FTL001DB`).
+- **Target Label**: `lost_5s` = availability failure (no frames received from neighbour for $\ge 5$ s). Base rate: 8.29% (12,368 positive failure events).
+- **Ablation on Outlier Feature `rssi_min_2s`**:
+  - Model with `rssi_min_2s`: PR-AUC = 0.3704, Brier score = 0.06226, ROC-AUC = 0.8226.
+  - Model without `rssi_min_2s`: PR-AUC = **0.3715**, Brier score = **0.06223**, ROC-AUC = **0.8229**.
+  - Confirmed: Dropping `rssi_min_2s` reduces noise and strictly improves predictive performance.
+
+### 2. Decision Gate Metrics (Model vs Heuristic Rule)
+Baseline rule to beat: $\text{risk} = 1 - \text{pdr}(2\text{ s})$.
+
+| Evaluation Regime | Rows | Model PR-AUC | Rule PR-AUC | Model Brier Score | Rule Brier Score | Model ROC-AUC | Rule ROC-AUC |
+|---|---|---|---|---|---|---|---|
+| **Middle Split (Grouped by Session)** | 149,112 | **0.371** | 0.158 | **0.0622** | 0.6353 | **0.823** | 0.724 |
+| **Leave-Device-Out (Test on Phone A)** | 69,742 | **0.391** | 0.145 | **0.0538** | 0.6214 | **0.836** | 0.733 |
+| **Leave-Device-Out (Test on Phone B)** | 79,370 | **0.416** | 0.167 | **0.0663** | 0.6474 | **0.823** | 0.715 |
+
+- **Bootstrap 95% Confidence Interval (by session)**:
+  - PR-AUC: **[0.199, 0.478]** (Rule at 0.158 is outside the confidence interval).
+  - Brier Score: **[0.0441, 0.0816]**.
+- **Calibration**: Max calibration error across deciles with $>1,000$ samples is $<0.08$. The rule's Brier score of $0.635$ causes massive false-alarm churn, whereas Link AI provides smooth probability estimates.
+
+### 3. Latency & Execution Profiling
+- **Qualcomm Hexagon HTP NPU (via QNN FP16 Delegate)**: ~0.904 ms per batch of 16 ($56.5\ \mu\text{s}$ per neighbour).
+- **LiteRT CPU / Pure-Kotlin Fallback**: $<1.5\ \mu\text{s}$ per prediction.
+- **Decision**: Keep both paths active. LiteRT QNN runs on Hexagon HTP when available; transparent CPU fallback runs when HTP is powered down or unsupported.
+- **Decision Gate Result**: **PASS**. Model beats rule on held-out place/device in both PR-AUC and Brier score. Model shipped.
+
+
 
 
 

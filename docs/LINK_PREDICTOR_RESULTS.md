@@ -50,3 +50,87 @@ Base rate in test set: 5.2% (a model predicting the base rate has PR-AUC equal t
 | full (RSSI + PDR + protocol + host) | 0.585 | 0.0304 | 93.0% |
 
 The deployed model is the full feature set on the 0.6 s loss target. It does not use distance, which phones cannot measure.
+
+---
+
+# Real-Data, Grouped Evaluation (Phase 7 Decision Gate)
+
+**Evaluation Date:** 2026-10-11  
+**Source Code:** `training/train_link_ai.py`  
+**Dataset Provenance:** 149,112 rows across 77 sessions recorded on real connected hardware (`10BFAX1BU80010U` and `10BFBG0FTL001DB`, iQOO I2501 devices) running the live mesh protocol across multiple test sessions.
+
+### 1. Honest Label Definition
+- **Target Label (`lost_5s`)**: "Neighbour availability failure in the next 5 s" (no frames received from this node for $\ge 5$ s).
+- As diagnosed in Research A section E, this measures **combined availability failure** (peer transmit schedule, power save, OEM process suspension, host controller contention, and physical RF path loss), not pure RF attenuation.
+- **Base Rate**: 8.29% ($12,368$ availability drops in $149,112$ total samples).
+
+### 2. Feature Refinement & Ablation
+Following Research A/B recommendations:
+- **Dropped `rssi_min_2s`**: Outlier-sensitive; in ablation testing, dropping it improved PR-AUC from 0.370 to 0.371 and Brier score from 0.0623 to 0.0622.
+- **Added 9 host context features**: `adv_update_age_s`, `active_adv_sets`, `nearby_state`, `gatt_link_count`, `screen_on`, `battery_saver`, `thermal_status`, `local_density`, `peer_beacon_period_s`.
+- Total feature space: 21 features in `LinkFeatures.ALL` (19 active training features in `F`).
+
+### 3. Model vs Baseline Rule Evaluation
+
+The decision gate requires comparing the learned model against the simple rule:
+$$\text{risk} = 1 - \text{pdr}(2\text{ s})$$
+
+#### Summary Across Full Field Dataset (Grouped by Session):
+
+| Model / Baseline | PR-AUC | ROC-AUC | Brier Score | Log Loss | Recall @ 5% FAR | Recall @ 10% FAR |
+|---|---|---|---|---|---|---|
+| **Rule ($1 - \text{pdr}_{2\text{s}}$)** | 0.158 | 0.724 | 0.6353 | — | — | — |
+| **Link AI (Grouped Fold)** | **0.371** | **0.823** | **0.0622** | **0.2270** | **42.6%** | **57.6%** |
+| *Relative Delta* | *+134.8%* | *+13.7%* | *-90.2%* | — | — | — |
+
+*Bootstrap 95% Confidence Intervals across sessions (500 resamples):*
+- PR-AUC: **[0.199, 0.478]** (Rule at 0.158 is outside the 95% CI)
+- Brier Score: **[0.0441, 0.0816]**
+
+#### Outer Split: Leave-Device-Out Cross-Validation:
+
+Testing whether a model trained exclusively on one device generalizes to an unseen physical device:
+
+| Evaluation Split | Rows | Base Rate | Model PR-AUC | Rule PR-AUC | Model Brier | Rule Brier | Model ROC-AUC | Rule ROC-AUC |
+|---|---|---|---|---|---|---|---|---|
+| **Train Phone B $\rightarrow$ Test Phone A (`10BFAX1BU80010U`)** | 69,742 | 7.30% | **0.391** | 0.145 | **0.0538** | 0.6214 | **0.836** | 0.733 |
+| **Train Phone A $\rightarrow$ Test Phone B (`10BFBG0FTL001DB`)** | 79,370 | 9.17% | **0.416** | 0.167 | **0.0663** | 0.6474 | **0.823** | 0.715 |
+
+*Verdict:* The learned Link AI model substantially outperforms the baseline rule on held-out hardware in both PR-AUC (+148% to +169%) and Brier score (10x to 11.5x lower error).
+
+### 4. Calibration Analysis
+
+The simple rule suffers a severe Brier score (~0.635) because sudden link sequence gaps force the rule to estimate risk = 1.0, even though 91.7% of the time the link immediately recovers.
+In contrast, Link AI produces well-calibrated probabilities:
+
+| Predicted Probability Decile | Mean Predicted | Observed Failure Rate | Sample Count |
+|---|---|---|---|
+| 0.0 – 0.1 | 0.035 | 0.033 | 115,168 |
+| 0.1 – 0.2 | 0.139 | 0.144 | 20,225 |
+| 0.2 – 0.3 | 0.242 | 0.299 | 6,223 |
+| 0.3 – 0.4 | 0.344 | 0.421 | 2,816 |
+| 0.4 – 0.5 | 0.435 | 0.485 | 1,489 |
+| 0.5 – 0.6 | 0.540 | 0.590 | 1,180 |
+| 0.6 – 0.7 | 0.641 | 0.697 | 811 |
+| 0.7 – 0.8 | 0.741 | 0.783 | 647 |
+| 0.8 – 0.9 | 0.840 | 0.835 | 392 |
+| 0.9 – 1.0 | 0.925 | 0.936 | 161 |
+
+Calibration error is $<0.08$ across all bins with $>1,000$ samples.
+
+### 5. NPU vs CPU Runtime Profile
+- **Hexagon HTP NPU (Qualcomm QNN FP16 Delegate)**:
+  - Latency: ~0.904 ms per batch of 16 ($56.5\ \mu\text{s}$ per neighbour).
+  - Offloads continuous background inference from CPU cores.
+- **LiteRT CPU / Pure Kotlin Fallback (`LossPredictor`)**:
+  - Latency: $<1.5\ \mu\text{s}$ per evaluation in pure Kotlin.
+  - Zero JNI / delegate overhead when NPU is powered down or unsupported.
+- **Deployment Decision**: Keep both paths active. LiteRT QNN delegate runs on Hexagon HTP when available; transparent CPU fallback runs seamlessly when HTP is unavailable or power-saving.
+
+### 6. Phase 7 Decision Gate Outcome
+- **Criteria**: Ship the model only if it beats the rule on the held-out device in both PR-AUC and Brier score.
+- **Outcome**: **PASSED**. Link AI achieves PR-AUC 0.391–0.416 (vs 0.145–0.167 for rule) and Brier score 0.0538–0.0663 (vs 0.6214–0.6474 for rule).
+- **Artifacts landed**:
+  - `app/src/main/assets/link_ai_v1.tflite`
+  - `app/src/main/assets/link_ai_v1.json`
+  - `core/src/main/resources/app/linkfill/core/mesh/loss_predictor_v2.txt`

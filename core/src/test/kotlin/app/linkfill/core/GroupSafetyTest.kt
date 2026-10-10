@@ -136,9 +136,9 @@ class GroupSafetyTest {
     @Test fun bundledLinkModelLoadsAndRanksADyingLinkAboveAHealthyOne() {
         val m = app.linkfill.core.mesh.LossPredictor.loadBundled()!!
         assertTrue(m.meta["high_threshold"]!!.toDouble() > m.meta["medium_threshold"]!!.toDouble())
-        // LinkFeatures.ALL order: distance, rssi med, rssi min, std, slope, drop, pdr0.5, pdr2, pdr10, misses, since_last, coded, queue
-        val healthy = doubleArrayOf(0.0, -50.0, -53.0, 2.0, 0.0, 0.0, 0.8, 0.8, 0.8, 0.0, 0.2, 1.0, 0.0)
-        val dying = doubleArrayOf(0.0, -88.0, -95.0, 8.0, -2.0, 10.0, 0.0, 0.0, 0.05, 20.0, 4.5, 1.0, 0.0)
+        // LinkFeatures.ALL order: distance, rssi med, std, slope, drop, pdr0.5, pdr2, pdr10, misses, since_last, coded, queue, adv_age, sets, nearby, gatt, screen, saver, thermal, density, beacon_period
+        val healthy = doubleArrayOf(0.0, -50.0, 2.0, 0.0, 0.0, 0.8, 0.8, 0.8, 0.0, 0.2, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 3.0)
+        val dying = doubleArrayOf(0.0, -88.0, 8.0, -2.0, 10.0, 0.0, 0.0, 0.05, 20.0, 4.5, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 3.0)
         assertTrue(m.predict(dying) > m.predict(healthy))
     }
 

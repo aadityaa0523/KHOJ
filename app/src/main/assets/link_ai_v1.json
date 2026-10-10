@@ -1,37 +1,131 @@
 {
- "features": [
-  "rssi_median_2s",
-  "rssi_min_2s",
-  "rssi_std_10s",
-  "rssi_slope_dbps",
-  "rssi_drop",
-  "pdr_0_5s",
-  "pdr_2s",
-  "pdr_10s",
-  "consecutive_misses",
-  "since_last_s",
-  "queue_depth"
- ],
- "batch": 16,
- "target": "lost_5s: no frame from this neighbour in the next 5 s",
- "trained_at": "2026-10-10T18:45",
- "rows": 35111,
- "sessions": 10,
- "phones": [
-  "10BFAX1BU80010U"
- ],
- "data": "real iQOO I2501 field logs (link_log.csv)",
- "model_roc_auc": 0.753,
- "model_pr_auc": 0.123,
- "rule_1_minus_pdr2s_roc_auc": 0.618,
- "rule_pr_auc": 0.038,
- "base_rate": 0.0283,
- "medium_threshold": 0.0265,
- "medium_recall": 0.699,
- "medium_precision": 0.057,
- "medium_flagged_share": 0.347,
- "high_threshold": 0.0506,
- "high_recall": 0.459,
- "high_precision": 0.085,
- "high_flagged_share": 0.153
+  "features": [
+    "rssi_median_2s",
+    "rssi_std_10s",
+    "rssi_slope_dbps",
+    "rssi_drop",
+    "pdr_0_5s",
+    "pdr_2s",
+    "pdr_10s",
+    "consecutive_misses",
+    "since_last_s",
+    "queue_depth",
+    "adv_update_age_s",
+    "active_adv_sets",
+    "nearby_state",
+    "gatt_link_count",
+    "screen_on",
+    "battery_saver",
+    "thermal_status",
+    "local_density",
+    "peer_beacon_period_s"
+  ],
+  "batch": 16,
+  "target": "lost_5s: neighbour availability failure in next 5 s (no frame received)",
+  "trained_at": "2026-10-11T02:12",
+  "data": "real dual-device field logs with grouped session and leave-device splits",
+  "model_pr_auc": 0.371,
+  "rule_pr_auc": 0.158,
+  "model_brier": 0.0622,
+  "rule_brier": 0.6353,
+  "model_roc_auc": 0.823,
+  "rule_1_minus_pdr2s_roc_auc": 0.724,
+  "model_log_loss": 0.227,
+  "recall_at_far_5pct": 0.426,
+  "recall_at_far_10pct": 0.576,
+  "pr_auc_95ci": [
+    0.199,
+    0.478
+  ],
+  "brier_95ci": [
+    0.0441,
+    0.0816
+  ],
+  "medium_threshold": 0.0978,
+  "high_threshold": 0.1467,
+  "base_rate": 0.0829,
+  "rows": 149112,
+  "sessions": 77,
+  "phones": [
+    "10BFAX1BU80010U",
+    "10BFBG0FTL001DB"
+  ],
+  "leave_device_out": {
+    "10BFAX1BU80010U": {
+      "rows": 69742,
+      "base_rate": 0.073,
+      "model_pr_auc": 0.391,
+      "rule_pr_auc": 0.145,
+      "model_brier": 0.0538,
+      "rule_brier": 0.6214,
+      "model_roc_auc": 0.836,
+      "rule_roc_auc": 0.733
+    },
+    "10BFBG0FTL001DB": {
+      "rows": 79370,
+      "base_rate": 0.0917,
+      "model_pr_auc": 0.416,
+      "rule_pr_auc": 0.167,
+      "model_brier": 0.0663,
+      "rule_brier": 0.6474,
+      "model_roc_auc": 0.823,
+      "rule_roc_auc": 0.715
+    }
+  },
+  "calibration": [
+    {
+      "bin": "0.0-0.1",
+      "mean_predicted": 0.035,
+      "observed": 0.033,
+      "samples": 115168
+    },
+    {
+      "bin": "0.1-0.2",
+      "mean_predicted": 0.139,
+      "observed": 0.144,
+      "samples": 20225
+    },
+    {
+      "bin": "0.2-0.3",
+      "mean_predicted": 0.242,
+      "observed": 0.299,
+      "samples": 6223
+    },
+    {
+      "bin": "0.3-0.4",
+      "mean_predicted": 0.344,
+      "observed": 0.421,
+      "samples": 2816
+    },
+    {
+      "bin": "0.4-0.5",
+      "mean_predicted": 0.448,
+      "observed": 0.505,
+      "samples": 1757
+    },
+    {
+      "bin": "0.5-0.6",
+      "mean_predicted": 0.548,
+      "observed": 0.604,
+      "samples": 1476
+    },
+    {
+      "bin": "0.6-0.7",
+      "mean_predicted": 0.645,
+      "observed": 0.611,
+      "samples": 1043
+    },
+    {
+      "bin": "0.7-0.8",
+      "mean_predicted": 0.736,
+      "observed": 0.509,
+      "samples": 381
+    },
+    {
+      "bin": "0.8-0.9",
+      "mean_predicted": 0.818,
+      "observed": 0.609,
+      "samples": 23
+    }
+  ]
 }

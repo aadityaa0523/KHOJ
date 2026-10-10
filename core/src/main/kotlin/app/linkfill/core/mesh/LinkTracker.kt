@@ -45,7 +45,22 @@ class LinkTracker(private val slotMs: Long = SLOT_MS, private val historyMs: Lon
     }
 
     /** Feature vector for the loss predictor, in the order of [LinkFeatures.ALL]. */
-    fun features(id: Int, now: Long, queueDepth: Int, codedMode: Boolean, distanceM: Double = Double.NaN): DoubleArray {
+    fun features(
+        id: Int,
+        now: Long,
+        queueDepth: Int,
+        codedMode: Boolean,
+        distanceM: Double = Double.NaN,
+        advUpdateAgeS: Double = 0.0,
+        activeAdvSets: Int = 1,
+        nearbyState: Int = 0,
+        gattLinkCount: Int = 0,
+        screenOn: Boolean = true,
+        batterySaver: Boolean = false,
+        thermalStatus: Int = 0,
+        localDensity: Int = 0,
+        peerBeaconPeriodS: Double = 3.0,
+    ): DoubleArray {
         val n = neighbors[id]
         val recent = n?.frames?.filter { now - it.timeMs <= 2_000 }.orEmpty()
         val older = n?.frames?.filter { now - it.timeMs <= 10_000 }.orEmpty()
@@ -57,7 +72,6 @@ class LinkTracker(private val slotMs: Long = SLOT_MS, private val historyMs: Lon
         return doubleArrayOf(
             if (distanceM.isNaN()) 0.0 else distanceM,
             med2,
-            rssi2.minOrNull() ?: rssi10.minOrNull() ?: FLOOR,
             std(rssi10),
             slope(older.map { (it.timeMs - now) / 1000.0 to it.rssi.toDouble() }),
             med2 - med10,
@@ -68,6 +82,15 @@ class LinkTracker(private val slotMs: Long = SLOT_MS, private val historyMs: Lon
             since / 1000.0,
             if (codedMode) 1.0 else 0.0,
             queueDepth.toDouble(),
+            advUpdateAgeS,
+            activeAdvSets.toDouble(),
+            nearbyState.toDouble(),
+            gattLinkCount.toDouble(),
+            if (screenOn) 1.0 else 0.0,
+            if (batterySaver) 1.0 else 0.0,
+            thermalStatus.toDouble(),
+            localDensity.toDouble(),
+            peerBeaconPeriodS,
         )
     }
 
@@ -98,17 +121,19 @@ class LinkTracker(private val slotMs: Long = SLOT_MS, private val historyMs: Lon
 /** Names and ablation subsets, following the experiment design in the project's research brief. */
 object LinkFeatures {
     val ALL = listOf(
-        "distance_m", "rssi_median_2s", "rssi_min_2s", "rssi_std_10s", "rssi_slope_dbps", "rssi_drop",
+        "distance_m", "rssi_median_2s", "rssi_std_10s", "rssi_slope_dbps", "rssi_drop",
         "pdr_0_5s", "pdr_2s", "pdr_10s", "consecutive_misses", "since_last_s", "coded_phy", "queue_depth",
+        "adv_update_age_s", "active_adv_sets", "nearby_state", "gatt_link_count",
+        "screen_on", "battery_saver", "thermal_status", "local_density", "peer_beacon_period_s",
     )
 
     /** Ablation variants: which columns of [ALL] each model may use. */
     val SETS = linkedMapOf(
         "distance only" to listOf(0),
-        "RSSI only" to listOf(1, 2, 3, 4, 5),
-        "PDR history only" to listOf(6, 7, 8, 9, 10),
-        "RSSI + PDR" to listOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
-        "full (RSSI + PDR + protocol + host)" to listOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12),
+        "RSSI only" to listOf(1, 2, 3, 4),
+        "PDR history only" to listOf(5, 6, 7, 8, 9),
+        "RSSI + PDR" to listOf(1, 2, 3, 4, 5, 6, 7, 8, 9),
+        "full (RSSI + PDR + protocol + host)" to (1..20).toList(),
     )
     const val DEPLOYED = "full (RSSI + PDR + protocol + host)"
 }
