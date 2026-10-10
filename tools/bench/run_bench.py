@@ -205,11 +205,12 @@ def run_experiment(adb: str, run_key: str, devices: List[Dict[str, str]]):
     print(f" Duration:            {seconds} seconds (~{seconds/60:.1f} minutes)")
     print(f"================================================================================\n")
 
-    # Clear previous radio_log.csv on both phones
+    # Force-stop app and clear previous radio_log.csv on both phones
     env = os.environ.copy()
     env["MSYS_NO_PATHCONV"] = "1"
     remote_path = "/sdcard/Android/data/app.linkfill/files/radio_log.csv"
     for d in (dev_a, dev_b):
+        subprocess.run([adb, "-s", d["serial"], "shell", "am", "force-stop", "app.linkfill"])
         subprocess.run([adb, "-s", d["serial"], "shell", f"rm -f {remote_path}"], env=env)
 
     # Launch BenchActivity on both phones

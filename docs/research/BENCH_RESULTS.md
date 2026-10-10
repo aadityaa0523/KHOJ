@@ -37,4 +37,31 @@ Build Git Hash: `d76a1e6` (with `RadioLog` + `BenchActivity` instrumentation)
 
 ## Phase 2: Root-Cause Diagnosis (R1 - R16)
 
-*(To be populated during Phase 2)*
+Build Git Hash: `d76a1e6` (with `RadioLog` + `BenchActivity` instrumentation)
+
+| Run | Date | Phones (serial, role) | Sets | Update Cadence | Run Length | Logical Delivery | Events / sec | p95 Gap | Max Gap | Notes / Isolates |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **R1** | 2026-10-10 | A (TX) -> B (RX) | 1M | Fixed (0 ms) | 240.2 s | **100.00%** (1/1) | 3.85 ev/s | 646.7 ms | 1393.2 ms | Clean baseline. Zero loss when payload is held constant! |
+| **R2** | 2026-10-10 | B (TX) -> A (RX) | 1M | Fixed (0 ms) | 240.1 s | **100.00%** (1/1) | 6.88 ev/s | 284.1 ms | 1300.2 ms | Role swap. Shows handset asymmetry (A RX sensitivity > B RX sensitivity). |
+| **R3** | 2026-10-10 | A (both) <-> B (both) | 1M | Fixed (0 ms) | 240.2 s | **100.00%** (1/1) | 7.14 ev/s | 283.4 ms | 1414.6 ms | Bidirectional. Scanning + advertising simultaneously does NOT blind 1M receiver. |
+| **R4** | 2026-10-10 | A (both) <-> B (both) | 1M + Coded | Fixed (0 ms) | 240.2 s | **100.00%** (1/1) | 5.83 ev/s | 376.6 ms | 1409.1 ms | Dual-set impact. 18.3% drop in RX rate (7.14 -> 5.83 ev/s) due to Coded airtime dilation. |
+| **R6** | 2026-10-10 | A (TX) -> B (RX) | 1M | 1000 ms | 240.0 s | **95.83%** (230/240) | 4.04 ev/s | 642.1 ms | 1384.4 ms | 1000 ms dwell solves single-hop loss. Only 10 missed frames. |
+| **R7** | 2026-10-10 | A (TX) -> B (RX) | 1M | 500 ms | 240.0 s | **82.46%** (395/479) | 4.08 ev/s | 688.7 ms | 1464.6 ms | 500 ms dwell loses 84 frames (17.5% loss). |
+| **R8** | 2026-10-10 | A (TX) -> B (RX) | 1M | 250 ms | 240.0 s | **58.87%** (561/953) | 4.09 ev/s | 647.7 ms | 1459.7 ms | **Confirms main root cause!** 250 ms update cadence drops 41.1% of frames! |
+| **R10** | 2026-10-10 | A (both) <-> B (both) | 1M + Coded | 250 ms | 240.0 s | **77.00%** (729/947) | 5.62 ev/s | 384.8 ms | 1409.0 ms | Baseline app config. 218 frames lost due to rapid update churn. |
+
+### Diagnostic Findings Summary:
+1. **Primary Cause Identified - Rapid Update Churn (`setAdvertisingData`)**:
+   - Fixed payload: **100.00%** delivery.
+   - 1000 ms cadence: **95.83%** delivery.
+   - 500 ms cadence: **82.46%** delivery.
+   - 250 ms cadence: **58.87%** delivery.
+   When advertising at 100 ms intervals, replacing data every 250 ms leaves only ~2.5 advertisements per frame. If the receiver is on a scan interval/window boundary, the frame is permanently dropped. Increasing dwell to 1000 ms provides ~10 transmission attempts per frame, elevating delivery to >95%.
+2. **Secondary Cause Identified - LE Coded Airtime Contraction**:
+   - Running a second advertising set on LE Coded PHY reduces RX event throughput by 18.3% (from 7.14 to 5.83 ev/s) due to the long packet duration (~3.5 ms vs ~300 µs on 1M) and controller scheduling overhead.
+3. **Hardware / Antenna Asymmetry**:
+   - Phone A (`10BFAX1BU80010U`) achieves higher event reception throughput (6.88 ev/s) than Phone B (`10BFBG0FTL001DB`, 3.85 ev/s), but both achieve 100% logical delivery when payloads are stable. Per ground rules, we accept this hardware variance rather than chase it.
+4. **Link Layer Health**:
+   - 0 truncated frames (`dataStatus == DATA_COMPLETE` in 100% of packets).
+   - 100% matched `TX_DONE` callbacks with median scheduling latency <15 ms. Controller HCI layer is healthy and not rejecting commands.
+
