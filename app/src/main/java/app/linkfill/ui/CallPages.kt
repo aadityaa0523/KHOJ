@@ -431,7 +431,7 @@ fun HelpTab(s: MeshUiState, mesh: MeshController, onScanBand: () -> Unit, onBand
 // ------------------------------------------------------------------ settings tab
 
 @Composable
-fun SettingsTab(s: MeshUiState, mesh: MeshController, night: Boolean, onNight: (Boolean) -> Unit, onScanFamily: () -> Unit, onScanPolice: () -> Unit, onAdvanced: () -> Unit) {
+fun SettingsTab(s: MeshUiState, mesh: MeshController, night: Boolean, onNight: (Boolean) -> Unit, onScanFamily: () -> Unit, onScanPolice: () -> Unit, onBatteryGuidance: () -> Unit = {}, onAdvanced: () -> Unit) {
     val context = LocalContext.current
     val p = LocalCall.current
     TabPage(stringResource(R.string.settings)) {
@@ -465,6 +465,7 @@ fun SettingsTab(s: MeshUiState, mesh: MeshController, night: Boolean, onNight: (
         }
 
         BackgroundLocationRow()
+        NavRow(KI.BATTERY, stringResource(R.string.battery_guidance_title), if (s.batteryUnrestricted) stringResource(R.string.battery_guidance_exempted) else stringResource(R.string.battery_guidance_summary), onClick = onBatteryGuidance)
 
         if (s.running) CallButton(stringResource(R.string.stop_khoj), mesh::stop, tone = Tone.QUIET)
         else CallButton(stringResource(R.string.turn_on), mesh::start, icon = KI.RADAR)
@@ -648,3 +649,99 @@ fun ScanPage(title: String, message: String, onBack: () -> Unit, onResult: (Stri
         ScanFrame(onResult)
     }
 }
+
+/**
+ * Deep-links to OEM autostart / power management / app settings where an intent exists.
+ * Priority order targets Vivo/iQOO FuntouchOS & OriginOS components, then standard Android intents.
+ */
+fun openBatterySettings(context: Context) {
+    val intents = listOf(
+        // Vivo / iQOO autostart manager
+        Intent().setComponent(android.content.ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity")),
+        Intent().setComponent(android.content.ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.PurviewTabActivity")),
+        // Vivo / iQOO high background power consumption
+        Intent().setComponent(android.content.ComponentName("com.iqoo.powersaving", "com.iqoo.powersaving.PowerSavingTabActivity")),
+        // Standard Android battery optimization request
+        Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + context.packageName)),
+        // Standard Android application details settings
+        Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+    )
+    for (intent in intents) {
+        try {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            return
+        } catch (_: Exception) { }
+    }
+}
+
+@Composable
+fun BatteryGuidancePage(s: MeshUiState, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val p = LocalCall.current
+    CallPage(stringResource(R.string.battery_guidance_title), onBack) {
+        Glass(Modifier.fillMaxWidth(), rim = heatRim()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    KIcon(KI.BATTERY, if (s.batteryUnrestricted) p.ok else p.gold, 28.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        stringResource(R.string.battery_guidance_heading),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = p.ink,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Text(
+                    stringResource(R.string.battery_guidance_why),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = p.ink,
+                )
+                if (s.batteryUnrestricted) {
+                    LivePill(stringResource(R.string.battery_guidance_exempted), p.ok)
+                } else {
+                    LivePill(stringResource(R.string.battery_guidance_summary), p.gold)
+                }
+            }
+        }
+
+        Glass(Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    stringResource(R.string.battery_guidance_vivo_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = p.ink,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    stringResource(R.string.battery_guidance_vivo_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = p.inkMuted,
+                )
+            }
+        }
+
+        Glass(Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    stringResource(R.string.battery_guidance_cost_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = p.ink,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    stringResource(R.string.battery_guidance_cost_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = p.inkMuted,
+                )
+            }
+        }
+
+        CallButton(
+            stringResource(R.string.battery_guidance_btn),
+            onClick = { openBatterySettings(context) },
+            icon = KI.SETTINGS,
+        )
+    }
+}
+

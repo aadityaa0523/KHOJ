@@ -146,6 +146,18 @@
     <string name="looking_for_you_body">Open KHOJ and tap Find to walk toward each other.</string>
     <string name="find_them">Find %1$s</string>
 
+    <!-- Battery Guidance -->
+    <string name="battery_guidance_title">Screen-off mesh running</string>
+    <string name="battery_guidance_summary">Aggressive battery managers may pause the mesh in your pocket. Tap to fix.</string>
+    <string name="battery_guidance_heading">Keep the mesh working in your pocket</string>
+    <string name="battery_guidance_why">When your screen is locked, Android and phone manufacturer power managers pause background apps to save power. If KHOJ is paused, you stop receiving alerts and stop relaying messages for your family.</string>
+    <string name="battery_guidance_vivo_title">For Vivo / iQOO / OriginOS phones</string>
+    <string name="battery_guidance_vivo_body">1. High Background Power Consumption: Go to Battery settings and allow KHOJ to run in background.\n2. Autostart: Allow KHOJ in Autostart manager so the mesh stays alive if system memory runs low.</string>
+    <string name="battery_guidance_cost_title">What it costs in battery</string>
+    <string name="battery_guidance_cost_body" formatted="false">Running the mesh in your pocket uses about 1.5% to 3% battery per hour. It will not drain your phone rapidly, but ensures continuous crowd-safety and emergency coverage.</string>
+    <string name="battery_guidance_btn">Open battery settings</string>
+    <string name="battery_guidance_exempted">Battery optimization is already unrestricted. The mesh will keep running in your pocket.</string>
+
     <string-array name="compass">
         <item>N</item><item>NE</item><item>E</item><item>SE</item><item>S</item><item>SW</item><item>W</item><item>NW</item>
     </string-array>

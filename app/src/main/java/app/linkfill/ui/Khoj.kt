@@ -130,7 +130,7 @@ private fun dirWord(bearing: Double, s: MeshUiState) = if (s.headingDeg != null)
 
 // ------------------------------------------------------------------ entry
 
-private enum class KSub { NONE, SCAN_BAND, FOUND_BAND, BANDS, SHOW_BAND, REWIND, SCAN_FAMILY, SCAN_POLICE, FIND }
+private enum class KSub { NONE, SCAN_BAND, FOUND_BAND, BANDS, SHOW_BAND, REWIND, SCAN_FAMILY, SCAN_POLICE, FIND, BATTERY_GUIDANCE }
 
 private enum class Tab(val icon: KI, val label: Int) {
     RADAR(KI.RADAR, R.string.tab_radar), GROUP(KI.GROUP, R.string.tab_group), HELP(KI.HELP, R.string.tab_help),
@@ -201,15 +201,16 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
         KSub.BANDS -> BandsPage(s, mesh, onShow = { b -> bandText = b.toQrText(); sub = KSub.SHOW_BAND }, onBack = ::home)
         KSub.SHOW_BAND -> Band.parse(bandText)?.let { ShowBandPage(it, mesh) { sub = KSub.BANDS } } ?: home()
         KSub.REWIND -> RewindPage(s, mesh, ::home)
+        KSub.BATTERY_GUIDANCE -> BatteryGuidancePage(s, ::home)
         KSub.NONE -> Shell(s, mesh, tabs, tab, { tab = it }) {
             when (tab) {
-                Tab.RADAR -> RadarTab(s, mesh, night, setNight, onFind = ::startFinding, onRewind = { sub = KSub.REWIND })
+                Tab.RADAR -> RadarTab(s, mesh, night, setNight, onFind = ::startFinding, onRewind = { sub = KSub.REWIND }, onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE })
                 Tab.GROUP -> GroupTab(s, mesh, onScanFamily = { scan(KSub.SCAN_FAMILY) })
                 Tab.HELP -> HelpTab(s, mesh, onScanBand = { scan(KSub.SCAN_BAND) }, onBands = { sub = KSub.BANDS }, onRewind = { sub = KSub.REWIND })
                 Tab.BOARD -> BoardTab(s, mesh, night, setNight)
                 Tab.SCAN -> HelperScanTab(s, mesh, onScanBand = { scan(KSub.SCAN_BAND) })
                 Tab.ALERTS -> HelperAlertsTab(s, mesh)
-                Tab.SETTINGS -> SettingsTab(s, mesh, night, setNight, onScanFamily = { scan(KSub.SCAN_FAMILY) }, onScanPolice = { scan(KSub.SCAN_POLICE) }, onAdvanced = onAdvanced)
+                Tab.SETTINGS -> SettingsTab(s, mesh, night, setNight, onScanFamily = { scan(KSub.SCAN_FAMILY) }, onScanPolice = { scan(KSub.SCAN_POLICE) }, onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE }, onAdvanced = onAdvanced)
             }
         }
     }
@@ -319,7 +320,7 @@ private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, se
 }
 
 @Composable
-private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onFind: (Int) -> Unit, onRewind: () -> Unit) {
+private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onFind: (Int) -> Unit, onRewind: () -> Unit, onBatteryGuidance: () -> Unit = {}) {
     val p = LocalCall.current
     val me = s.myFix
     val heard = s.members.associate { it.originId.toLong() to it.heardAt }
@@ -330,6 +331,20 @@ private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNi
     } else emptyList()
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         RadarHeader(s, mesh, night, setNight)
+        if (!s.batteryUnrestricted) {
+            Glass(rim = heatRim(), padding = PaddingValues(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    KIcon(KI.BATTERY, p.gold, 28.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.battery_guidance_title), style = MaterialTheme.typography.titleMedium, color = p.ink, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.battery_guidance_summary), style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                CallButton(stringResource(R.string.battery_guidance_btn), onBatteryGuidance, icon = KI.SETTINGS, tone = Tone.HOT)
+            }
+        }
         for (a in s.alerts) AlarmCard(a, s, onDismiss = { mesh.dismissAlert(a.key) }, onRewind = if (a.kind == "LOST" && s.rewindFrames > 0) onRewind else null)
         for ((id, who) in s.seekers) Glass(rim = heatRim(), padding = PaddingValues(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

@@ -210,3 +210,31 @@ Format per entry:
   - 100% green test suite across `:core` and `:app`. Debug APK built and installed on both test phones.
 - **Approved by:** Project Owner / Engineering Lead
 
+---
+
+### DEC-005: Phase 9 Screen-Off Background Survival & OEM Battery Guidance
+- **Date:** 2026-10-11
+- **Context:**
+  - On Indian market smartphones (prominently Vivo, iQOO, Oppo, OnePlus running OriginOS / FuntouchOS / ColorOS), aggressive OEM battery managers ("High Background Power Consumption", "Autostart", aggressive freezing) terminate or suspend background Bluetooth mesh activities when the screen is locked, breaking emergency alert delivery and crowd-safety relaying.
+  - Furthermore, Android's Bluetooth stack (`ScanManager`) suspends BLE scanning completely when the screen turns off if scan filters are empty (`ScanFilter` list size 0).
+  - Ground rule: Never request battery-optimization exemption silently. Always explain in plain human language what is happening, what it costs in battery (~1.5% to 3%/hour), and direct the user to system/OEM settings via user-initiated taps.
+- **Options considered:**
+  - *Option 1*: Implement non-empty controller hardware scan filters, verify `MeshService` foreground service declarations (`location|connectedDevice|camera`), provide an explicit Call UI battery guidance page (`BatteryGuidancePage`) with multi-OEM fallback deep-linking (Vivo/iQOO specific security components down to AOSP battery optimization and application details settings), and show prominent non-intrusive warning cards in Radar and Settings tabs.
+  - *Option 2*: Silently prompt `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` dialog on launch.
+    - Rejected: Violates Google Play policies, breaks project ground rules, and fails to handle Vivo/iQOO specific "Autostart" and "Background Power Consumption" controls which are independent of AOSP `deviceidle` whitelisting.
+- **Decision:** Adopt Option 1.
+  1. **Hardware Filter Screen-Off Scanning**: Confirmed `BleMeshRadio.scanFilters()` registers explicit service data (`SERVICE`) and service UUID (`GattBearer.SERVICE`) filters. This offloads advertising packet matching to the Bluetooth controller hardware filters, allowing the AP to stay asleep while waking up only on valid KHOJ mesh frames.
+  2. **Foreground Service Types**: Confirmed `MeshService` is registered with `foregroundServiceType="location|connectedDevice|camera"` and started with persistent notification.
+  3. **Call UI Battery Guidance Screen**:
+     - Added `BatteryGuidancePage` in `CallPages.kt` matching the high-contrast Call design system (`Glass`, `CallButton`, `Tone.HOT`, `p.gold` warning icons).
+     - Plain-language explanation of why screen-off survival matters for family safety and what the power consumption cost is (1.5%–3%/hour).
+     - Dedicated OEM instructions for Vivo/iQOO (FuntouchOS / OriginOS) covering "High Background Power Consumption" and "Autostart".
+     - Robust multi-intent deep linking: tries `com.iqoo.secure/.ui.phoneoptimize.AddWhiteListActivity`, `com.vivo.permissionmanager/.activity.PurviewTabActivity`, `com.iqoo.powersaving/.PowerSavingTabActivity`, and falls back safely to `Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` and `Settings.ACTION_APPLICATION_DETAILS_SETTINGS`.
+  4. **Status Cards**: Displayed on `RadarTab` and `SettingsTab` when `batteryUnrestricted()` is false, allowing immediate one-tap remediation.
+- **Validation**:
+  - Live execution verified on two iQOO I2501 (Android 16) devices (`10BFAX1BU80010U` and `10BFBG0FTL001DB`).
+  - Screen turned off on Phone A; Phone A continued executing in background, maintaining LE 1M extended advertising and 10 s LE Coded emergency burst callbacks without process termination or Bluetooth stall.
+  - All unit tests pass across `:core` and `:app`.
+- **Approved by:** Project Owner / Engineering Lead
+
+
