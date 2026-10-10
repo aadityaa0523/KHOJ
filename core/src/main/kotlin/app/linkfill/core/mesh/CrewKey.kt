@@ -17,20 +17,45 @@ import javax.crypto.spec.SecretKeySpec
  */
 class CrewKey private constructor(val code: String) {
     private val key: SecretKeySpec
+    val tagKey: ByteArray // K_id for rotating tags
     /** Separate key for point-to-point tunnels (random nonces), so its nonce space never meets the packet nonces. */
     private val tunnelKey: SecretKeySpec
-    /** Public crew tag in every packet header, so members can filter. It links packets of the same crew. */
+    /** Internal crew identifier for logging/roster. */
     val crewId: Int
+
+    var slotDurationS: Long = 900L // 15 minutes, configurable for testing
 
     init {
         val secret = decodeCode(code)
-        val okm = SessionCrypto.hkdf("KHOJ crew v1".toByteArray(), secret, "crew".toByteArray(), 68)
-        key = SecretKeySpec(okm.copyOfRange(0, 32), "AES")
-        crewId = ByteBuffer.wrap(okm, 32, 4).int
-        tunnelKey = SecretKeySpec(okm.copyOfRange(36, 68), "AES")
+        val salt = "KHOJ crew v2".toByteArray(Charsets.UTF_8)
+        val contentOkm = SessionCrypto.hkdf(salt, secret, "content".toByteArray(Charsets.UTF_8), 32)
+        tagKey = SessionCrypto.hkdf(salt, secret, "tag".toByteArray(Charsets.UTF_8), 32)
+        val tunnelOkm = SessionCrypto.hkdf(salt, secret, "tunnel".toByteArray(Charsets.UTF_8), 32)
+        key = SecretKeySpec(contentOkm, "AES")
+        crewId = ByteBuffer.wrap(tagKey, 0, 4).int
+        tunnelKey = SecretKeySpec(tunnelOkm, "AES")
     }
 
-    /** AES-GCM with a 128-bit tag (the only length Apple CryptoKit accepts, for iOS interop). The nonce is (originId, packetId), unique per sender as long as packetIds never repeat. */
+    fun slotForTime(unixSeconds: Long): Long = Math.floorDiv(unixSeconds, slotDurationS)
+
+    fun tagForSlot(slot: Long): Long {
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(tagKey, "HmacSHA256"))
+        val slotBytes = ByteBuffer.allocate(8).putLong(slot).array()
+        val hmac = mac.doFinal(slotBytes)
+        return ByteBuffer.wrap(hmac, 0, 8).long
+    }
+
+    fun tagForTime(unixSeconds: Long): Long = tagForSlot(slotForTime(unixSeconds))
+
+    fun matchesTag(tag: Long, unixSeconds: Long): Boolean {
+        val currentSlot = slotForTime(unixSeconds)
+        return tag == tagForSlot(currentSlot) ||
+               tag == tagForSlot(currentSlot - 1) ||
+               tag == tagForSlot(currentSlot + 1)
+    }
+
+    /** AES-GCM with a 128-bit tag. The nonce is exactly 96 bits: (runEpoch, originId, packetId). */
     fun seal(p: MeshPacket, plaintext: ByteArray): ByteArray = cipher(Cipher.ENCRYPT_MODE, p).run { updateAAD(p.aad()); doFinal(plaintext) }
 
     fun open(p: MeshPacket): ByteArray? = try {
@@ -55,7 +80,11 @@ class CrewKey private constructor(val code: String) {
     }
 
     private fun cipher(mode: Int, p: MeshPacket) = Cipher.getInstance("AES/GCM/NoPadding").apply {
-        val nonce = ByteBuffer.allocate(12).putInt(p.originId).putInt(p.packetId).putInt(p.crewId).array()
+        val nonce = ByteBuffer.allocate(12)
+            .putInt(p.runEpoch)
+            .putInt(p.originId)
+            .putInt(p.packetId)
+            .array()
         init(mode, key, GCMParameterSpec(TAG_BYTES * 8, nonce))
     }
 

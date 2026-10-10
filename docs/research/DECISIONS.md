@@ -122,6 +122,33 @@ Format per entry:
 
 ---
 
+### DEC-002d: Phase 6 Wire Format v2, Nonce Safety & Ephemeral Rotating Crew Tags
+- **Date:** 2026-10-11
+- **Context:**
+  - Wire format v1 broadcast static 32-bit `crewId` in the clear in every 29-byte packet header. In crowded environments (e.g., Kumbh Mela, music festivals), passive sniffers could trivially track specific individuals and deduce social graphs across the venue.
+  - In v1, the 96-bit AES-GCM nonce was `originId (4) | packetId (4) | crewId (4)`. If an app process died or was force-closed and restarted, the packet counter reset to 1. If `originId` collided or was preserved, nonces would be reused under the same key material, which fatally undermines AES-GCM confidentiality and authenticity (catastrophic nonce reuse vulnerability).
+  - High packet arrival rates from foreign unauthenticated senders could exhaust CPU via cryptographic decryption attempts or starve the urgent relay queue.
+- **Options considered:**
+  - *Option 1*: Full Wire Format v2 overhaul:
+    - 37-byte header: `crewTag: Long` (8B), `runEpoch: Int` (4B), `originId: Int`, `packetId: Int`, `originTimeS: Int`.
+    - Nonce: exactly 96 bits formatted as `runEpoch | originId | packetId`.
+    - Rotating ephemeral crew tag: 8-byte truncation of `HMAC-SHA256(tagKey, slot)` where `slot = floor(unixSeconds / 900)`. Nodes accept tags matching slot $t$, $t-1$, or $t+1$.
+    - Separate subkeys derived via HKDF-Expand with distinct labels (`content` for AES-GCM, `tag` for rotating HMAC tag, `tunnel` for point-to-point payloads).
+    - Multi-tiered pre-decryption rate limiting (per-relay token bucket 10/s, burst 20; global cap 50/s; foreign urgent quota 10/min; unauthenticated packets restricted to routine priority 3).
+  - *Option 2*: Keep 29-byte header with rolling crew tag by shortening originId/packetId.
+    - Rejected: shortening IDs increases collision risks in dense multi-hop meshes. Extended BLE advertising handles 37 bytes effortlessly without fragmentation.
+- **Decision:** Adopt Option 1. Upgrade `MeshPacket.VERSION` to 2 (37-byte header). Cleanly drop legacy v1 frames. Synchronize wire format and test vectors with Swift implementation in `ios/KhojMesh`.
+- **Validation:**
+  - `nonceUniquenessAcrossRestartsAndReinstalls`: 1,000 simulated process boots $\times$ 1,000 packets ($10^6$ total) produced 0 duplicate nonces.
+  - `crewTagRotationMatchesAcrossSlotBoundariesAndRejectsTwoSlotsAway`: verifies $\pm 1$ slot tolerance (15-min clock skew) and rejection at $\pm 2$ slots.
+  - `v1FramesCleanlyRejected`: v1 frames cleanly dropped as malformed.
+  - `rateLimiterDropsFloodingSourceBeforeDecryption`: token bucket halts spam relays (50 frames/s) before AES-GCM decryption while legitimate crew packets pass without delay.
+  - `unauthenticatedForeignUrgentPacketsCappedAndRoutinePriority`: unauthenticated foreign SOS packets capped at 10/min and demoted to routine priority 3.
+  - Test vectors verified across Kotlin and Swift implementations (`ios/KhojMesh`).
+- **Approved by:** Project Owner / Engineering Lead
+
+---
+
 ### DEC-003: Phase 7 Link AI vs Rule Selection
 
 *(Pending Phase 7)*

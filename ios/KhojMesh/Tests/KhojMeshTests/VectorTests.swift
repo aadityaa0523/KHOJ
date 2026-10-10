@@ -27,9 +27,11 @@ final class VectorTests: XCTestCase {
 
     func testKeyDerivation() throws {
         let c = try crew()
-        XCTAssertEqual(c.packetKey.withUnsafeBytes { [UInt8]($0) }, hex(str(v, "packet_key_hex")))
+        XCTAssertEqual(c.packetKey.withUnsafeBytes { [UInt8]($0) }, hex(str(v, "content_key_hex")))
+        XCTAssertEqual(c.tagKey.withUnsafeBytes { [UInt8]($0) }, hex(str(v, "tag_key_hex")))
         XCTAssertEqual(c.tunnelKey.withUnsafeBytes { [UInt8]($0) }, hex(str(v, "tunnel_key_hex")))
         XCTAssertEqual(Int(c.crewId), v["crew_id_int32_be"] as? Int)
+        XCTAssertEqual(c.tagForTime(1790000000), (v["crew_tag_uint64"] as? NSNumber)?.uint64Value)
         XCTAssertNotNil(CrewKey(code: "abcd-efgh-jklm-npqr"), "case and dashes are accepted")
         XCTAssertNil(CrewKey(code: "ABCDEFGHJKLMNPQ0"), "0 is not in the alphabet")
         XCTAssertNil(CrewKey(code: "ABCDEFGHJKLMNPQ"), "too short")
@@ -39,11 +41,18 @@ final class VectorTests: XCTestCase {
         let c = try crew()
         let b = beacon()
         let p = try XCTUnwrap(MeshPacket.decode(hex(str(b, "frame_hex"))))
-        let f = b["fields"] as! [String: Int]
-        XCTAssertEqual(Int(p.type.rawValue), f["type"]); XCTAssertEqual(Int(p.ttl), f["ttl"]); XCTAssertEqual(Int(p.hops), f["hops"])
-        XCTAssertEqual(Int(p.linkSeq), f["linkSeq"]); XCTAssertEqual(Int(p.relayId), f["relayId"]); XCTAssertEqual(Int(p.crewId), f["crewId"])
-        XCTAssertEqual(Int(p.originId), f["originId"]); XCTAssertEqual(Int(p.packetId), f["packetId"]); XCTAssertEqual(Int(p.originTimeS), f["originTimeS"])
-        XCTAssertEqual(p.crewId, c.crewId)
+        let f = b["fields"] as! [String: Any]
+        XCTAssertEqual(Int(p.type.rawValue), (f["type"] as! NSNumber).intValue)
+        XCTAssertEqual(Int(p.ttl), (f["ttl"] as! NSNumber).intValue)
+        XCTAssertEqual(Int(p.hops), (f["hops"] as! NSNumber).intValue)
+        XCTAssertEqual(Int(p.linkSeq), (f["linkSeq"] as! NSNumber).intValue)
+        XCTAssertEqual(Int(p.relayId), (f["relayId"] as! NSNumber).intValue)
+        XCTAssertEqual(p.crewTag, (f["crewTag"] as! NSNumber).uint64Value)
+        XCTAssertEqual(Int(p.runEpoch), (f["runEpoch"] as! NSNumber).intValue)
+        XCTAssertEqual(Int(p.originId), (f["originId"] as! NSNumber).intValue)
+        XCTAssertEqual(Int(p.packetId), (f["packetId"] as! NSNumber).intValue)
+        XCTAssertEqual(Int(p.originTimeS), (f["originTimeS"] as! NSNumber).intValue)
+        XCTAssertTrue(c.matchesTag(p.crewTag, unixSeconds: UInt64(p.originTimeS)))
         XCTAssertEqual(p.aad(), hex(str(b, "aad_hex")))
 
         let plain = try XCTUnwrap(c.open(p))
@@ -62,15 +71,23 @@ final class VectorTests: XCTestCase {
     func testEncodeBeaconFrameByteForByte() throws {
         let c = try crew()
         let b = beacon()
-        let f = b["fields"] as! [String: Int]
+        let f = b["fields"] as! [String: Any]
         let message = MeshMessage.beacon(lat: 25.3176, lon: 82.9739, accuracyM: 12, battery: 80, name: "Asha", findable: false)
         XCTAssertEqual(message.encode(), hex(str(b, "plaintext_hex")))
 
-        var p = MeshPacket(type: message.type, ttl: UInt8(f["ttl"]!), hops: UInt8(f["hops"]!), linkSeq: UInt16(f["linkSeq"]!),
-                           relayId: Int32(f["relayId"]!), crewId: c.crewId, originId: Int32(f["originId"]!),
-                           packetId: Int32(f["packetId"]!), originTimeS: UInt32(f["originTimeS"]!), body: [])
+        var p = MeshPacket(type: message.type,
+                           ttl: UInt8((f["ttl"] as! NSNumber).uint8Value),
+                           hops: UInt8((f["hops"] as! NSNumber).uint8Value),
+                           linkSeq: UInt16((f["linkSeq"] as! NSNumber).uint16Value),
+                           relayId: Int32((f["relayId"] as! NSNumber).int32Value),
+                           crewTag: (f["crewTag"] as! NSNumber).uint64Value,
+                           runEpoch: Int32((f["runEpoch"] as! NSNumber).int32Value),
+                           originId: Int32((f["originId"] as! NSNumber).int32Value),
+                           packetId: Int32((f["packetId"] as! NSNumber).int32Value),
+                           originTimeS: UInt32((f["originTimeS"] as! NSNumber).uint32Value),
+                           body: [])
         var nonce: [UInt8] = []
-        nonce.appendBE(p.originId); nonce.appendBE(p.packetId); nonce.appendBE(p.crewId)
+        nonce.appendBE(p.runEpoch); nonce.appendBE(p.originId); nonce.appendBE(p.packetId)
         XCTAssertEqual(nonce, hex(str(b, "nonce_hex")))
         p.body = try c.seal(p, plaintext: message.encode())
         XCTAssertEqual(p.body.count, message.encode().count + (b["gcm_tag_bytes"] as! Int))
@@ -82,7 +99,7 @@ final class VectorTests: XCTestCase {
         let p = try XCTUnwrap(MeshPacket.decode(frame))
         XCTAssertEqual(p.type, .publicSos)
         XCTAssertTrue(p.type.isPublic)
-        XCTAssertEqual(p.crewId, 0)
+        XCTAssertEqual(p.crewTag, 0)
         XCTAssertEqual(MeshMessage.decode(type: p.type, body: p.body), .publicSos(kind: 0, lat: 25.3176, lon: 82.9739, label: "Asha"))
         XCTAssertEqual(p.encoded(), frame)
         XCTAssertEqual(MeshMessage.publicSos(kind: 0, lat: 25.3176, lon: 82.9739, label: "Asha").encode(), p.body)

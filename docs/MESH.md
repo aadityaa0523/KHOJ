@@ -13,18 +13,18 @@ The difference: **KHOJ's mesh runs on the phones' own Bluetooth radios, with no 
 
 ## Packet
 
-There is a 29-byte header, then the body (at most 200 bytes in total):
+There is a 37-byte header, then the body (at most 200 bytes in total):
 
 ```
-'K' | version | type | flags | ttl | hops | linkSeq (2) | relayId (4) | crewId (4) | originId (4) | packetId (4) | originTime (4) | len | body
+'K' | version | type | flags | ttl | hops | linkSeq (2) | relayId (4) | crewTag (8) | runEpoch (4) | originId (4) | packetId (4) | originTime (4) | len | body
 ```
 
 - **Link fields** (`ttl`, `hops`, `relayId`, `linkSeq`) change at every hop.
-- **End-to-end fields** (`type`, `crewId`, `originId`, `packetId`, `originTime`) never change, and the crew key authenticates them.
+- **End-to-end fields** (`type`, `crewTag`, `runEpoch`, `originId`, `packetId`, `originTime`) never change, and the crew key authenticates them.
 - **Flags:** bit `0x01` marks a frame from a battery-saver member (see Low-power members below).
-- **Body:** AES-256-GCM under the crew key, with a 128-bit (16-byte) tag. The tag was 96 bits before. It changed so that iOS CryptoKit, which supports only 16-byte tags, can implement the same protocol. The nonce is (originId, packetId, crewId). Packet ids never repeat within a run, and node ids are fresh each run. Repeated SOS messages reuse the exact original ciphertext.
-- **Crew key:** HKDF of a 16-character code (about 80 bits) shared in person. `crewId` is a public tag derived from the key.
-- **Limitations:** the crew key is static, with no forward secrecy and no way to remove a member. The crew tag lets observers link packets from the same crew.
+- **Body:** AES-256-GCM under the crew key, with a 128-bit (16-byte) tag. The 96-bit nonce is `(runEpoch, originId, packetId)`. `runEpoch` is randomly drawn at each process start, completely protecting against nonce reuse if the packet counter or originId reset after an OS kill or crash. Repeated SOS messages reuse the exact original ciphertext.
+- **Crew key:** HKDF-SHA256 from a 16-character code (about 80 bits) with salt `KHOJ crew v2`, deriving independent keys for `content`, `tag`, and `tunnel`. `crewTag` is an ephemeral 8-byte HMAC tag that rotates every 15 minutes, preventing physical tracking of static crew identifiers.
+- **Limitations:** the crew key is static across the session without forward secrecy, but ephemerality shields metadata. Pre-decryption rate limits protect against denial-of-service frame flooding.
 
 | Type | Use |
 |---|---|

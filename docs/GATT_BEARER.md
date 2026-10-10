@@ -136,33 +136,34 @@ Rules:
 
 ## 5. Frame format
 
-A frame is what the reassembler outputs. It is the same byte string the extended-advertising mesh sends. Size: 29-byte header plus 0 to 171 body bytes, so 29 to 200 bytes.
+A frame is what the reassembler outputs. It is the same byte string the extended-advertising mesh sends. Size: 37-byte header plus 0 to 163 body bytes, so 37 to 200 bytes.
 
 | Offset | Size | Field | Notes |
 |---|---|---|---|
 | 0 | 1 | magic | `0x4B` (`K`) |
-| 1 | 1 | version | `1` |
+| 1 | 1 | version | `2` |
 | 2 | 1 | type | see type table |
 | 3 | 1 | flags | bit 0 (`0x01`) = low-power sender. Other bits must be sent as 0 and ignored |
 | 4 | 1 | ttl | remaining hops, 0 to 8. Default for new packets is 6 |
 | 5 | 1 | hops | hops travelled so far, 0 to 8. 0 at the origin |
 | 6 | 2 | linkSeq | u16, per-transmitter counter, wraps at 65536 |
 | 8 | 4 | relayId | Int32, node id of the phone that put this frame on this link |
-| 12 | 4 | crewId | Int32, public crew tag (derived, section 6). 0 for public messages |
-| 16 | 4 | originId | Int32, node id of the phone that created the packet |
-| 20 | 4 | packetId | Int32, per-origin packet counter |
-| 24 | 4 | originTimeS | u32, Unix time in seconds when created |
-| 28 | 1 | bodyLen | u8, must equal the number of bytes that follow |
-| 29 | bodyLen | body | sealed message (crew types) or plain message (public types) |
+| 12 | 8 | crewTag | u64 big-endian, rotating ephemeral crew tag (derived, section 6). 0 for public messages |
+| 20 | 4 | runEpoch | Int32 big-endian, random epoch generated at process boot |
+| 24 | 4 | originId | Int32, node id of the phone that created the packet |
+| 28 | 4 | packetId | Int32, per-origin packet counter |
+| 32 | 4 | originTimeS | u32, Unix time in seconds when created |
+| 36 | 1 | bodyLen | u8, must equal the number of bytes that follow |
+| 37 | bodyLen | body | sealed message (crew types) or plain message (public types) |
 
-A receiver drops a frame when: the length is below 29 or above 200; magic or version differ; the type is unknown; ttl or hops is above 8; or bodyLen does not equal the remaining bytes. Mesh input comes from anyone in range, so decoding never trusts it.
+A receiver drops a frame when: the length is below 37 or above 200; magic or version differ; the type is unknown; ttl or hops is above 8; or bodyLen does not equal the remaining bytes. Mesh input comes from anyone in range, so decoding never trusts it.
 
 Link fields versus end-to-end fields:
 
 | Group | Fields | Changes at each hop? | Covered by the crew key? |
 |---|---|---|---|
 | Link | flags, ttl, hops, linkSeq, relayId | yes | no |
-| End-to-end | type, crewId, originId, packetId, originTimeS, body | never | yes (type, crewId, originId, packetId, originTimeS are the AAD; the body is the ciphertext) |
+| End-to-end | type, crewTag, runEpoch, originId, packetId, originTimeS, body | never | yes (version, type, crewTag, runEpoch, originId, packetId, originTimeS are the 26-byte AAD; the body is the ciphertext) |
 
 Type codes:
 
@@ -187,26 +188,31 @@ Types 7 to 12 are the "public" types. NEIGHBOR frames carry nothing and Android 
 
 The crew shares one 16-character code, exchanged in person. It uses the alphabet `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (32 symbols, no `0 O 1 I`). Input is accepted in any case, with spaces or dashes removed, and must be exactly 16 symbols from that alphabet.
 
-### 6.1 Key derivation
+### 6.1 Key derivation (v2)
 
 1. Crew secret: 16 bytes, byte *i* is the index (0 to 31) of code character *i* in the alphabet.
-2. HKDF with SHA-256 (RFC 5869): salt = the UTF-8 bytes of `KHOJ crew v1`, input key material = the crew secret, info = the UTF-8 bytes of `crew`, output length 68 bytes.
-3. Split the 68 bytes:
+2. HKDF with SHA-256 (RFC 5869): salt = the UTF-8 bytes of `KHOJ crew v2`, input key material = the crew secret.
+3. Three separate subkeys derived via HKDF-Expand with distinct context labels:
+   - `content` (32 bytes): packet encryption key for AES-256-GCM.
+   - `tag` (32 bytes): tag key for HMAC-SHA256 ephemeral crew tag generation.
+   - `tunnel` (32 bytes): tunnel key for point-to-point payloads.
+4. Internal `crewId`: first 4 bytes of `tag` key read as Int32 big-endian (internal roster use only, never transmitted over the air).
 
-| Bytes | Use |
-|---|---|
-| 0 to 31 (32 bytes) | packet key, AES-256-GCM |
-| 32 to 35 (4 bytes) | crewId, read as Int32 big-endian |
-| 36 to 67 (32 bytes) | tunnel key (point-to-point blobs, not used by the bearer; derive it only if you need it) |
+### 6.2 Ephemeral Rotating Crew Tag
 
-### 6.2 Sealing a packet
+To prevent cross-site physical tracking via static broadcast tags, `crewTag` rotates every 15 minutes (900 seconds):
+- Slot: `slot = floor(unixSeconds / 900)`.
+- Ephemeral tag: first 8 bytes of `HMAC-SHA256(tagKey, slot.toBigEndianBytes())` as UInt64 big-endian.
+- Verification: A node accepts frames if `crewTag` matches slot $t$, $t-1$, or $t+1$ to tolerate clock skew up to 15 minutes.
+
+### 6.3 Sealing a packet
 
 - Algorithm: AES-256-GCM, 16-byte tag.
-- Nonce (12 bytes): `originId (4) | packetId (4) | crewId (4)`, each big-endian.
-- AAD (17 bytes): `type (1) | crewId (4) | originId (4) | packetId (4) | originTimeS (4)`, big-endian. Link fields are not in the AAD, so relays can change them.
-- The body is `ciphertext | tag`. It is 16 bytes longer than the plaintext, so the plaintext is at most 155 bytes.
+- Nonce (12 bytes / 96 bits): `runEpoch (4) | originId (4) | packetId (4)`, big-endian. Guarantees nonce uniqueness across app restarts and counter resets.
+- AAD (26 bytes): `version (1) | type (1) | crewTag (8) | runEpoch (4) | originId (4) | packetId (4) | originTimeS (4)`, big-endian. Binds protocol version and all end-to-end metadata. Link fields are excluded so relays can forward without invalidating the tag.
+- The body is `ciphertext | tag`. It is 16 bytes longer than the plaintext, so the plaintext is at most 147 bytes.
 
-Nonce safety: the nonce depends only on (originId, packetId, crewId). Never seal two different plaintexts with the same packetId. Repeats of an SOS or RALLY resend the original sealed packet byte for byte; they do not reseal it with a new time.
+Nonce safety: the nonce is partitioned into `(runEpoch, originId, packetId)`. Because `runEpoch` is randomly generated on every router startup and `originId` is random, nonces never collide even if packet counter resets to 1 after an app crash or restart. Repeats of an SOS or RALLY resend the original sealed packet byte for byte; they do not reseal it with a new time.
 
 Opening: find the frame's crewId; if it equals your crew's crewId, open with the same nonce and AAD built from the frame. A failed tag check means forged or corrupted: neither deliver nor relay it.
 

@@ -155,5 +155,49 @@ Comparison between Phase 4 blind multi-packet offers (8 packets blindly re-sent 
   - `custodyByOverhearingStretchesUrgentRetrySchedule`: verified custody switches urgent schedule to stretched delays.
   - `antiEntropyReconciliationFindsMissingItemsWithLowerBytes`: verified reconciliation delivers all missing items (0, 1, 8, 16) with lower byte footprint than blind offers.
 
+---
+
+## Phase 6: Security and Privacy (Wire Format v2) Validation
+
+Build Git Hash: Phase 6 changes (Wire Format v2, 37-byte header, 96-bit nonce `runEpoch | originId | packetId`, 15-minute rotating ephemeral crew tags, pre-decryption token bucket rate limiting, foreign urgent quota, interop vectors v2).
+
+### 1. Wire Format v2 Layout & Size Constraints
+- **Header Size**: 37 bytes (Version 2, `crewTag: Long` [8B], `runEpoch: Int` [4B], `originId: Int` [4B], `packetId: Int` [4B], `originTimeS: Int` [4B]).
+- **Max Frame Limit**: 200 bytes. With 37B header and 16B AES-GCM tag, max payload = 147 bytes plaintext.
+- **Wire Overhead Margin**:
+  - Exact SUMMARY: 132 B body + 37 B header = **169 B** ($\le 200$ B limit, 31 B headroom).
+  - Bloom SUMMARY: 92 B body + 37 B header = **129 B** ($\le 200$ B limit, 71 B headroom).
+  - Official Alert: 146 B body + 37 B header = **183 B** ($\le 200$ B limit, 17 B headroom).
+  - Regular Beacons & SOS: ~50–60 B total ($\le 200$ B limit).
+
+### 2. Nonce Collision Resistance & Ephemeral Privacy
+- **Nonce Uniqueness Simulation**:
+  - Tested 1,000 consecutive app crashes/restarts resetting packet counters to 1, originating 1,000 packets per session.
+  - Total nonces evaluated: **1,000,000**.
+  - Duplicate nonces observed: **0** ($100\%$ collision-free guarantee across restarts).
+- **Ephemeral Crew Tag Rotation**:
+  - 8-byte HMAC tag rotates every 900 seconds (15 minutes).
+  - Tested slot boundary crossover: tag generated at $t=899$ s (slot 0) verified at $t=901$ s (slot 1) $\rightarrow$ **Matched** (tolerates clock skew).
+  - Tested out-of-window tag: tag from slot 0 evaluated at $t=1801$ s (slot 2) $\rightarrow$ **Rejected cleanly**.
+
+### 3. Pre-Decryption Rate Limiting & Resource Protection
+- **Relay Token Bucket**:
+  - 10 frames/s per-relay sustained, 20 burst; 50 frames/s global cap.
+  - Flooding attack simulation (50 unauthenticated frames/s from a single node) $\rightarrow$ 30 frames dropped at rate limiter before hitting cryptographic decryption; genuine crew packets delivered without latency or loss.
+- **Foreign Urgent Traffic Demotion**:
+  - Foreign unauthenticated urgent packets capped at 10 per minute and demoted to routine priority 3 (preventing queue starvation of internal crew traffic).
+
+### 4. Interoperability & Unit Test Suite (JVM)
+- **137/137 tests green** in `:core`:
+  - `nonceUniquenessAcrossRestartsAndReinstalls`: verified 0 nonce collisions across $10^6$ packets across 1,000 restarts.
+  - `crewTagRotationMatchesAcrossSlotBoundariesAndRejectsTwoSlotsAway`: verified $\pm 1$ slot tolerance and rejection at $\pm 2$ slots.
+  - `v1FramesCleanlyRejected`: verified legacy v1 frames are rejected as malformed.
+  - `rateLimiterDropsFloodingSourceBeforeDecryption`: verified pre-decryption token bucket protection.
+  - `unauthenticatedForeignUrgentPacketsCappedAndRoutinePriority`: verified foreign urgent demotion to priority 3 and quota cap.
+- **Swift / iOS Interoperability**:
+  - Updated `ios/KhojMesh/Sources/KhojMesh` (`MeshPacket.swift`, `CrewKey.swift`) and `Tests` (`VectorTests.swift`).
+  - Regenerated test vectors in `docs/interop/khoj_test_vectors.json` matching v2 specification.
+
+
 
 

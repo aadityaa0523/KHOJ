@@ -163,9 +163,10 @@ class MeshTest {
 
     @Test fun forgedCrewPacketIsNeitherDeliveredNorRelayed() {
         val crew = CrewKey.create()
+        val tag = crew.tagForTime(t0 / 1000)
         val inbox = Inbox()
         val r = MeshRouter(1, crew, MeshConfig(), Random(1), inbox)
-        val forged = MeshPacket(MeshType.TEXT, 3, 0, 9, 1, crew.crewId, 9, 1, t0 / 1000, ByteArray(20))
+        val forged = MeshPacket(MeshType.TEXT, 3, 0, 9, 1, tag, 0, 9, 1, t0 / 1000, ByteArray(20))
         r.onFrame(MeshPacket.encode(forged), -60, false, t0)
         assertEquals(1, r.stats.authFailed)
         assertNull(r.nextFrame(t0 + 5_000, allowFiller = false))
@@ -332,23 +333,24 @@ class MeshTest {
         val crew = CrewKey.create()
         val r = MeshRouter(1, crew, MeshConfig(), Random(42), object : MeshListener {})
         for (i in 1..200) {
-            r.links.onFrame(1000 + i, 1, -70, false, t0)
+            r.links.onFrame(100 + i, 1, -70, false, t0)
         }
         assertEquals(200, r.links.density(t0))
         val policy = r.config.densityPolicy(r.links.density(t0))
         assertEquals(0.04, policy.relayProbability, 1e-9)
 
+        val tag = crew.tagForTime(t0 / 1000)
         for (i in 1..100) {
-            val bare = MeshPacket(MeshType.SOS, 3, 0, 999, i, crew.crewId, 2000 + i, 1, t0 / 1000, ByteArray(0))
-            val sealed = MeshPacket(MeshType.SOS, 3, 0, 999, i, crew.crewId, 2000 + i, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Sos(25.0, 82.0, "help")).second))
+            val bare = MeshPacket(MeshType.SOS, 3, 0, 1000 + i, 1, tag, 0, 2000 + i, 1, t0 / 1000, ByteArray(0))
+            val sealed = MeshPacket(MeshType.SOS, 3, 0, 1000 + i, 1, tag, 0, 2000 + i, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Sos(25.0, 82.0, "help")).second))
             r.onFrame(MeshPacket.encode(sealed), -70, false, t0)
         }
         assertEquals(100, r.stats.relayScheduled)
 
         r.stats.relayScheduled = 0
         for (i in 1..100) {
-            val bare = MeshPacket(MeshType.TEXT, 3, 0, 999, 100 + i, crew.crewId, 3000 + i, 1, t0 / 1000, ByteArray(0))
-            val sealed = MeshPacket(MeshType.TEXT, 3, 0, 999, 100 + i, crew.crewId, 3000 + i, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Text("chat")).second))
+            val bare = MeshPacket(MeshType.TEXT, 3, 0, 2000 + i, 1, tag, 0, 3000 + i, 1, t0 / 1000, ByteArray(0))
+            val sealed = MeshPacket(MeshType.TEXT, 3, 0, 2000 + i, 1, tag, 0, 3000 + i, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Text("chat")).second))
             r.onFrame(MeshPacket.encode(sealed), -70, false, t0)
         }
         assertTrue("non-urgent packets must be gated by relay probability", r.stats.relayScheduled < 20)
@@ -356,22 +358,23 @@ class MeshTest {
 
     @Test fun suppressionThresholdAdaptsWithCrowdDensity() {
         val crew = CrewKey.create()
+        val tag = crew.tagForTime(t0 / 1000)
         val r = MeshRouter(1, crew, MeshConfig(suppression = true), Random(1), object : MeshListener {})
 
-        val bare = MeshPacket(MeshType.TEXT, 3, 0, 99, 1, crew.crewId, 500, 1, t0 / 1000, ByteArray(0))
-        val sealed = MeshPacket(MeshType.TEXT, 3, 0, 99, 1, crew.crewId, 500, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Text("test")).second))
+        val bare = MeshPacket(MeshType.TEXT, 3, 0, 99, 1, tag, 0, 500, 1, t0 / 1000, ByteArray(0))
+        val sealed = MeshPacket(MeshType.TEXT, 3, 0, 99, 1, tag, 0, 500, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Text("test")).second))
         val encoded = MeshPacket.encode(sealed)
         r.onFrame(encoded, -70, false, t0)
         assertEquals(1, r.stats.relayScheduled)
 
-        val enc1 = MeshPacket.encode(MeshPacket(MeshType.TEXT, 3, 0, 101, 1, crew.crewId, 500, 1, t0 / 1000, sealed.body))
+        val enc1 = MeshPacket.encode(MeshPacket(MeshType.TEXT, 3, 0, 101, 1, tag, 0, 500, 1, t0 / 1000, sealed.body))
         r.onFrame(enc1, -70, false, t0 + 10)
         assertEquals(0, r.stats.suppressed)
 
-        val enc2 = MeshPacket.encode(MeshPacket(MeshType.TEXT, 3, 0, 102, 1, crew.crewId, 500, 1, t0 / 1000, sealed.body))
+        val enc2 = MeshPacket.encode(MeshPacket(MeshType.TEXT, 3, 0, 102, 1, tag, 0, 500, 1, t0 / 1000, sealed.body))
         r.onFrame(enc2, -70, false, t0 + 20)
 
-        val frame = r.nextFrame(t0 + 500, allowFiller = false)
+        val frame = r.nextFrame(t0 + 2000, allowFiller = false)
         assertNull("frame should be suppressed after hearing 2 other relays in low density tier", frame)
         assertEquals(1, r.stats.suppressed)
     }
@@ -397,8 +400,9 @@ class MeshTest {
         r.tick(t0 + 3900 + 5200)
         assertEquals(3, r.stats.urgentResends)
 
-        val ackBare = MeshPacket(MeshType.ACK, 3, 0, 2, 1, crew.crewId, 2, 999, t0 / 1000, ByteArray(0))
-        val ackEncoded = MeshPacket.encode(MeshPacket(MeshType.ACK, 3, 0, 2, 1, crew.crewId, 2, 999, t0 / 1000, crew.seal(ackBare, MeshMessage.encode(MeshMessage.Ack(1, packetId)).second)))
+        val tag = crew.tagForTime(t0 / 1000)
+        val ackBare = MeshPacket(MeshType.ACK, 3, 0, 2, 1, tag, 0, 2, 999, t0 / 1000, ByteArray(0))
+        val ackEncoded = MeshPacket.encode(MeshPacket(MeshType.ACK, 3, 0, 2, 1, tag, 0, 2, 999, t0 / 1000, crew.seal(ackBare, MeshMessage.encode(MeshMessage.Ack(1, packetId)).second)))
         r.onFrame(ackEncoded, -70, false, t0 + 10_000)
 
         assertEquals(0, r.pendingUrgent)
@@ -408,11 +412,12 @@ class MeshTest {
 
     @Test fun randomSlotRelayRuleWithRssiTieBreaker() {
         val crew = CrewKey.create()
+        val tag = crew.tagForTime(t0 / 1000)
         val rRandom = MeshRouter(1, crew, MeshConfig(relayRule = app.linkfill.core.mesh.RelayRule.RANDOM_SLOT), Random(1), object : MeshListener {})
         val rFarFirst = MeshRouter(2, crew, MeshConfig(relayRule = app.linkfill.core.mesh.RelayRule.RSSI_FAR_FIRST), Random(1), object : MeshListener {})
 
-        val bare = MeshPacket(MeshType.SOS, 3, 0, 99, 1, crew.crewId, 50, 1, t0 / 1000, ByteArray(0))
-        val enc = MeshPacket.encode(MeshPacket(MeshType.SOS, 3, 0, 99, 1, crew.crewId, 50, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Sos(25.0, 82.0, "help")).second)))
+        val bare = MeshPacket(MeshType.SOS, 3, 0, 99, 1, tag, 0, 50, 1, t0 / 1000, ByteArray(0))
+        val enc = MeshPacket.encode(MeshPacket(MeshType.SOS, 3, 0, 99, 1, tag, 0, 50, 1, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Sos(25.0, 82.0, "help")).second)))
 
         rRandom.onFrame(enc, -90, false, t0)
         assertTrue(rRandom.stats.relayScheduled == 1)
@@ -616,13 +621,103 @@ class MeshTest {
         val packetId = rA.originate(MeshMessage.Sos(25.0, 82.0, "help"), t0)
         assertEquals(1, rA.pendingUrgent)
 
-        val bare = MeshPacket(MeshType.SOS, 3, 0, 1, packetId, crew.crewId, 1, packetId, t0 / 1000, ByteArray(0))
-        val relayedBy2 = MeshPacket(MeshType.SOS, 2, 1, 2, 10, crew.crewId, 1, packetId, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Sos(25.0, 82.0, "help")).second))
+        val tag = crew.tagForTime(t0 / 1000)
+        val bare = MeshPacket(MeshType.SOS, 3, 0, 1, packetId, tag, 0, 1, packetId, t0 / 1000, ByteArray(0))
+        val relayedBy2 = MeshPacket(MeshType.SOS, 2, 1, 2, 10, tag, 0, 1, packetId, t0 / 1000, crew.seal(bare, MeshMessage.encode(MeshMessage.Sos(25.0, 82.0, "help")).second))
         rA.onFrame(MeshPacket.encode(relayedBy2), -70, false, t0 + 20)
 
         assertEquals(1, rA.stats.custodiesObserved)
 
         rA.tick(t0 + 1_500)
         assertEquals("Must not retry within 1.5s once custody is overheard", 0, rA.stats.urgentResends)
+    }
+
+    @Test fun nonceUniquenessAcrossRestartsAndReinstalls() {
+        val seenNonces = HashSet<Long>(1_000_000, 0.75f)
+        val rng = Random(42)
+        val fixedOriginId = 0x12345678
+        for (restart in 1..1000) {
+            val runEpoch = rng.nextInt()
+            for (packetId in 1..1000) {
+                val key = (runEpoch.toLong() shl 32) or (packetId.toLong() and 0xFFFFFFFFL)
+                val added = seenNonces.add(key)
+                assertTrue("Nonce (runEpoch=$runEpoch, pid=$packetId) must be unique", added)
+            }
+        }
+        assertEquals(1_000_000, seenNonces.size)
+    }
+
+    @Test fun crewTagRotationMatchesAcrossSlotBoundariesAndRejectsTwoSlotsAway() {
+        val crew = CrewKey.create()
+        val nowS = 1_000_000L
+        val currentSlot = crew.slotForTime(nowS)
+
+        val currentTag = crew.tagForSlot(currentSlot)
+        val prevTag = crew.tagForSlot(currentSlot - 1)
+        val nextTag = crew.tagForSlot(currentSlot + 1)
+        val twoSlotsBehindTag = crew.tagForSlot(currentSlot - 2)
+        val twoSlotsAheadTag = crew.tagForSlot(currentSlot + 2)
+
+        assertTrue(crew.matchesTag(currentTag, nowS))
+        assertTrue(crew.matchesTag(prevTag, nowS))
+        assertTrue(crew.matchesTag(nextTag, nowS))
+        assertFalse(crew.matchesTag(twoSlotsBehindTag, nowS))
+        assertFalse(crew.matchesTag(twoSlotsAheadTag, nowS))
+    }
+
+    @Test fun v1FramesCleanlyRejected() {
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(), Random(1), object : MeshListener {})
+        val v1Header = java.nio.ByteBuffer.allocate(29).apply {
+            put(MeshPacket.MAGIC.toByte())
+            put(1.toByte()) // VERSION 1
+            put(MeshType.TEXT.code.toByte())
+            put(0.toByte()) // flags
+            put(3.toByte()) // ttl
+            put(0.toByte()) // hops
+            putShort(1.toShort()) // linkSeq
+            putInt(99) // relayId
+            putInt(crew.crewId) // crewId
+            putInt(500) // originId
+            putInt(1) // packetId
+            putInt((t0 / 1000).toInt()) // originTimeS
+            put(0.toByte()) // len
+        }.array()
+
+        assertNull("Decoder must reject v1 frames", MeshPacket.decode(v1Header))
+        r.onFrame(v1Header, -70, false, t0)
+        assertEquals(1, r.stats.malformed)
+        assertEquals(0, r.stats.delivered)
+        assertEquals(0, r.stats.relayScheduled)
+    }
+
+    @Test fun rateLimiterDropsFloodingSourceBeforeDecryption() {
+        val crew = CrewKey.create()
+        val r = MeshRouter(1, crew, MeshConfig(), Random(1), object : MeshListener {})
+        val tag = crew.tagForTime(t0 / 1000)
+
+        for (i in 1..50) {
+            val bare = MeshPacket(MeshType.TEXT, 3, 0, 99, i, tag, 0, 500, i, t0 / 1000, ByteArray(0))
+            val sealed = MeshPacket(MeshType.TEXT, 3, 0, 99, i, tag, 0, 500, i, t0 / 1000, crew.seal(bare, "msg $i".toByteArray()))
+            r.onFrame(MeshPacket.encode(sealed), -70, false, t0 + i * 2)
+        }
+
+        assertTrue("Rate limiter must drop excess frames (dropped=${r.stats.rateLimited})", r.stats.rateLimited >= 25)
+    }
+
+    @Test fun unauthenticatedForeignUrgentPacketsCappedAndRoutinePriority() {
+        val myCrew = CrewKey.create()
+        val otherCrew = CrewKey.create()
+        val r = MeshRouter(1, myCrew, MeshConfig(), Random(1), object : MeshListener {})
+
+        val otherTag = otherCrew.tagForTime(t0 / 1000)
+        val bare = MeshPacket(MeshType.SOS, 3, 0, 88, 1, otherTag, 0, 999, 1, t0 / 1000, ByteArray(0))
+        val sealed = MeshPacket(MeshType.SOS, 3, 0, 88, 1, otherTag, 0, 999, 1, t0 / 1000, otherCrew.seal(bare, "help".toByteArray()))
+
+        r.onFrame(MeshPacket.encode(sealed), -70, false, t0)
+        assertEquals(1, r.stats.foreignRelayed)
+        assertEquals(0, r.stats.delivered)
+        val queued = r.nextFrame(t0 + 2000, allowFiller = false)
+        assertNotNull(queued)
     }
 }

@@ -31,7 +31,8 @@ class MeshPacket(
     val hops: Int,
     val relayId: Int,
     val linkSeq: Int,
-    val crewId: Int,
+    val crewTag: Long,
+    val runEpoch: Int,
     val originId: Int,
     val packetId: Int,
     val originTimeS: Long,
@@ -40,37 +41,62 @@ class MeshPacket(
 ) {
     val key: Long get() = (originId.toLong() shl 32) or (packetId.toLong() and 0xFFFFFFFFL)
 
+    val crewId: Int get() = (crewTag and 0xFFFFFFFFL).toInt()
+
+    constructor(
+        type: MeshType,
+        ttl: Int,
+        hops: Int,
+        relayId: Int,
+        linkSeq: Int,
+        crewId: Int,
+        originId: Int,
+        packetId: Int,
+        originTimeS: Long,
+        body: ByteArray,
+        flags: Int = 0,
+    ) : this(type, ttl, hops, relayId, linkSeq, crewId.toLong() and 0xFFFFFFFFL, 0, originId, packetId, originTimeS, body, flags)
+
     fun relayed(newRelayId: Int, newLinkSeq: Int) =
-        MeshPacket(type, ttl - 1, hops + 1, newRelayId, newLinkSeq, crewId, originId, packetId, originTimeS, body, flags)
+        MeshPacket(type, ttl - 1, hops + 1, newRelayId, newLinkSeq, crewTag, runEpoch, originId, packetId, originTimeS, body, flags)
 
     /** Link fields for the next transmission; [lowPower] marks the transmitter (not the originator) as a low-power member. */
     fun onLink(newRelayId: Int, newLinkSeq: Int, lowPower: Boolean = false) =
-        MeshPacket(type, ttl, hops, newRelayId, newLinkSeq, crewId, originId, packetId, originTimeS, body,
+        MeshPacket(type, ttl, hops, newRelayId, newLinkSeq, crewTag, runEpoch, originId, packetId, originTimeS, body,
             (flags and FLAG_LOW_POWER.inv()) or (if (lowPower) FLAG_LOW_POWER else 0))
 
     /** The phone that put this frame on the air is a low-power member (it sleeps and needs a friend). */
     val fromLowPower get() = flags and FLAG_LOW_POWER != 0
 
-    /** Bytes the crew key authenticates: the end-to-end header fields only. */
-    fun aad(): ByteArray = ByteBuffer.allocate(1 + 4 + 4 + 4 + 4).apply {
-        put(type.code.toByte()); putInt(crewId); putInt(originId); putInt(packetId); putInt(originTimeS.toInt())
+    /** Bytes the crew key authenticates: version + the end-to-end header fields. */
+    fun aad(): ByteArray = ByteBuffer.allocate(1 + 1 + 8 + 4 + 4 + 4 + 4).apply {
+        put(VERSION.toByte())
+        put(type.code.toByte())
+        putLong(crewTag)
+        putInt(runEpoch)
+        putInt(originId)
+        putInt(packetId)
+        putInt(originTimeS.toInt())
     }.array()
 
     companion object {
         const val MAGIC = 0x4B // 'K'
-        const val VERSION = 1
-        const val HEADER = 29
+        const val VERSION = 2
+        const val HEADER = 37
         const val MAX_SIZE = 200
         const val MAX_TTL = 8
         /** Link-level flag; not covered by [aad], so relays may change it. */
         const val FLAG_LOW_POWER = 0x01
 
         fun encode(p: MeshPacket): ByteArray {
-            require(p.body.size <= MAX_SIZE - HEADER) { "body too large" }
+            require(p.body.size <= MAX_SIZE - HEADER) { "body too large: ${p.body.size} > ${MAX_SIZE - HEADER}" }
             return ByteBuffer.allocate(HEADER + p.body.size).apply {
                 put(MAGIC.toByte()); put(VERSION.toByte()); put(p.type.code.toByte()); put(p.flags.toByte())
                 put(p.ttl.toByte()); put(p.hops.toByte()); putShort(p.linkSeq.toShort())
-                putInt(p.relayId); putInt(p.crewId); putInt(p.originId); putInt(p.packetId); putInt(p.originTimeS.toInt())
+                putInt(p.relayId)
+                putLong(p.crewTag)
+                putInt(p.runEpoch)
+                putInt(p.originId); putInt(p.packetId); putInt(p.originTimeS.toInt())
                 put(p.body.size.toByte()); put(p.body)
             }.array()
         }
@@ -86,11 +112,14 @@ class MeshPacket(
                 val ttl = b.get().toInt() and 0xFF
                 val hops = b.get().toInt() and 0xFF
                 val linkSeq = b.short.toInt() and 0xFFFF
-                val relayId = b.int; val crewId = b.int; val originId = b.int; val packetId = b.int
+                val relayId = b.int
+                val crewTag = b.long
+                val runEpoch = b.int
+                val originId = b.int; val packetId = b.int
                 val originTime = b.int.toLong() and 0xFFFFFFFFL
                 val len = b.get().toInt() and 0xFF
                 if (ttl > MAX_TTL || hops > MAX_TTL || len != b.remaining()) return null
-                MeshPacket(type, ttl, hops, relayId, linkSeq, crewId, originId, packetId, originTime, ByteArray(len).also { b.get(it) }, flags)
+                MeshPacket(type, ttl, hops, relayId, linkSeq, crewTag, runEpoch, originId, packetId, originTime, ByteArray(len).also { b.get(it) }, flags)
             } catch (_: BufferUnderflowException) {
                 null
             }

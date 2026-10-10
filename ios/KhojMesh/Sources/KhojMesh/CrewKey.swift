@@ -6,28 +6,56 @@ public struct CrewKey {
     public static let alphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
     public static let tagBytes = 16
 
-    /// Public crew tag carried in every packet header.
+    /// Internal crew identifier for logging/roster.
     public let crewId: Int32
+    public let tagKey: SymmetricKey
     let packetKey: SymmetricKey
     let tunnelKey: SymmetricKey
+    public var slotDurationS: UInt64 = 900
 
     /// Accepts any case, with spaces or dashes. Nil unless exactly 16 symbols from `alphabet`.
     public init?(code input: String) {
         let chars = input.uppercased().filter { $0.isLetter || $0.isNumber }
         let secret = chars.compactMap { Self.alphabet.firstIndex(of: $0) }.map { UInt8($0) }
         guard chars.count == 16, secret.count == 16 else { return nil }
-        let okm = HKDF<SHA256>.deriveKey(
-            inputKeyMaterial: SymmetricKey(data: secret),
-            salt: Array("KHOJ crew v1".utf8), info: Array("crew".utf8), outputByteCount: 68)
-        let b = okm.withUnsafeBytes { [UInt8]($0) }
-        packetKey = SymmetricKey(data: b[0..<32])
-        crewId = Int32(bitPattern: b[32..<36].reduce(UInt32(0)) { $0 << 8 | UInt32($1) })
-        tunnelKey = SymmetricKey(data: b[36..<68])
+        let ikm = SymmetricKey(data: secret)
+        let salt = Array("KHOJ crew v2".utf8)
+        let contentOkm = HKDF<SHA256>.deriveKey(inputKeyMaterial: ikm, salt: salt, info: Array("content".utf8), outputByteCount: 32)
+        let tagOkm = HKDF<SHA256>.deriveKey(inputKeyMaterial: ikm, salt: salt, info: Array("tag".utf8), outputByteCount: 32)
+        let tunnelOkm = HKDF<SHA256>.deriveKey(inputKeyMaterial: ikm, salt: salt, info: Array("tunnel".utf8), outputByteCount: 32)
+        packetKey = contentOkm
+        tagKey = tagOkm
+        tunnelKey = tunnelOkm
+        let tagBytes = tagOkm.withUnsafeBytes { [UInt8]($0) }
+        crewId = Int32(bitPattern: tagBytes[0..<4].reduce(UInt32(0)) { $0 << 8 | UInt32($1) })
+    }
+
+    public func slotForTime(_ unixSeconds: UInt64) -> UInt64 {
+        unixSeconds / slotDurationS
+    }
+
+    public func tagForSlot(_ slot: UInt64) -> UInt64 {
+        var slotBytes: [UInt8] = []
+        slotBytes.appendBE(slot)
+        let hmac = HMAC<SHA256>.authenticationCode(for: slotBytes, using: tagKey)
+        let b = Array(hmac)
+        return b[0..<8].reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+    }
+
+    public func tagForTime(_ unixSeconds: UInt64) -> UInt64 {
+        tagForSlot(slotForTime(unixSeconds))
+    }
+
+    public func matchesTag(_ tag: UInt64, unixSeconds: UInt64) -> Bool {
+        let slot = slotForTime(unixSeconds)
+        return tag == tagForSlot(slot) ||
+               (slot > 0 && tag == tagForSlot(slot - 1)) ||
+               tag == tagForSlot(slot + 1)
     }
 
     private func nonce(_ p: MeshPacket) throws -> AES.GCM.Nonce {
         var n: [UInt8] = []
-        n.appendBE(p.originId); n.appendBE(p.packetId); n.appendBE(p.crewId)
+        n.appendBE(p.runEpoch); n.appendBE(p.originId); n.appendBE(p.packetId)
         return try AES.GCM.Nonce(data: n)
     }
 
