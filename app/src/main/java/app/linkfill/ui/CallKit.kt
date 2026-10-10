@@ -2,12 +2,17 @@ package app.linkfill.ui
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,9 +43,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -49,10 +56,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -63,11 +72,32 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// ------------------------------------------------------------------ glass
+// ------------------------------------------------------------------ glass & press
 
 /**
- * Frosted panel: translucent fill over the aurora, a light rim (or a heat-gradient rim for the one panel that owns
- * the screen) and a soft offset shadow, so it reads as a sheet floating above the ground, not a flat card.
+ * Press feedback matching prototype v3 .press:
+ * Animates scale down to 0.96f on press with a bouncy spring curve.
+ * Automatically disabled if the user has enabled "Remove animations" in accessibility.
+ */
+fun Modifier.pressFeedback(scale: Float = 0.96f): Modifier = composed {
+    val still = rememberReducedMotion()
+    if (still) return@composed this
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val animatedScale by animateFloatAsState(
+        targetValue = if (isPressed) scale else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy),
+        label = "pressScale"
+    )
+    this.graphicsLayer {
+        scaleX = animatedScale
+        scaleY = animatedScale
+    }
+}
+
+/**
+ * Frosted glass panel matching prototype v3 .glass:
+ * Inset highlight, blur/translucent fill over ground, hairline border, and soft real shadow.
  */
 @Composable
 fun Glass(
@@ -81,10 +111,10 @@ fun Glass(
     val p = LocalCall.current
     Column(
         modifier
-            .shadow(if (p.night) 14.dp else 6.dp, shape, ambientColor = Color(0x66050528), spotColor = Color(0x80050528))
+            .shadow(if (p.night) 14.dp else 8.dp, shape, ambientColor = p.shadowColor, spotColor = p.shadowColor)
             .clip(shape)
             .background(fill ?: p.glass)
-            .border(BorderStroke(1.dp, rim ?: Brush.verticalGradient(listOf(p.line.copy(alpha = p.line.alpha * 2.2f), p.line))), shape)
+            .border(BorderStroke(1.dp, rim ?: SolidColor(p.gline)), shape)
             .padding(padding),
         content = content,
     )
@@ -94,14 +124,15 @@ fun Glass(
 @Composable
 fun heatRim(): Brush { val p = LocalCall.current; return Brush.linearGradient(listOf(p.gold.copy(alpha = 0.9f), p.violet.copy(alpha = 0.75f), p.sky.copy(alpha = 0.65f))) }
 
+
 // ------------------------------------------------------------------ icons
 
 /** Line icons drawn on a 24-unit grid, one stroke weight, so the app needs no icon library and no emoji. */
 enum class KI { RADAR, GROUP, HELP, SETTINGS, SUN, MOON, QR, SCAN, BAND, REWIND, PIN, BELL, CHEVRON, SHIELD, PLUS, GLOBE, BATTERY, WALK, CHECK, CLOSE, PHONE, SIREN }
 
 @Composable
-fun KIcon(kind: KI, tint: Color = LocalCall.current.ink, size: Dp = 24.dp, label: String? = null) {
-    Canvas(Modifier.size(size).then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)) {
+fun KIcon(kind: KI, tint: Color = LocalCall.current.ink, size: Dp = 24.dp, label: String? = null, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(size).then(if (label != null) Modifier.semantics { contentDescription = label } else Modifier)) {
         val u = this.size.minDimension / 24f
         val st = Stroke(2f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
         fun o(x: Float, y: Float) = Offset(x * u, y * u)
@@ -199,46 +230,69 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) =
 
 enum class Tone { PRIMARY, QUIET, ALARM, HOT }
 
-/** The big action button, 64 dp tall: a label that names the action, with an optional drawn icon. */
+/** The big action button, 54-64 dp tall: a label that names the action, with an optional drawn icon. */
 @Composable
 fun CallButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, icon: KI? = null, tone: Tone = Tone.PRIMARY, enabled: Boolean = true) {
     val p = LocalCall.current
-    val shape = RoundedCornerShape(20.dp)
+    val shape = RoundedCornerShape(27.dp)
     val content: @Composable RowScope.() -> Unit = {
-        if (icon != null) { KIcon(icon, tint = if (tone == Tone.QUIET) p.ink else Color.White, size = 22.dp); Spacer(Modifier.width(10.dp)) }
-        Text(text, fontSize = 18.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        if (icon != null) { KIcon(icon, tint = if (tone == Tone.QUIET) p.ink else Color.White, size = 20.dp); Spacer(Modifier.width(8.dp)) }
+        Text(text, fontSize = 17.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
     }
-    val m = modifier.fillMaxWidth().heightIn(min = 64.dp)
+    val m = modifier.fillMaxWidth().heightIn(min = 54.dp).pressFeedback()
     when (tone) {
-        Tone.QUIET -> OutlinedButton(onClick, m, enabled = enabled, shape = shape, border = BorderStroke(1.dp, p.line.copy(alpha = 0.5f)),
+        Tone.QUIET -> OutlinedButton(onClick, m, enabled = enabled, shape = shape, border = BorderStroke(1.dp, p.hair),
             colors = ButtonDefaults.outlinedButtonColors(containerColor = p.glass, contentColor = p.ink), content = content)
         else -> Button(onClick, m, enabled = enabled, shape = shape, content = content, colors = ButtonDefaults.buttonColors(
-            containerColor = when (tone) { Tone.ALARM -> p.alarm; Tone.HOT -> p.fire; else -> p.violet }, contentColor = Color.White))
+            containerColor = when (tone) { Tone.ALARM -> p.alarm; Tone.HOT -> p.fire; else -> p.blue }, contentColor = Color.White))
     }
 }
 
-/** A small round glass button for a drawn icon (48 dp target). */
+
+/** A small round glass button for a drawn icon (44-48 dp target). */
 @Composable
-fun GlassIconButton(kind: KI, label: String, onClick: () -> Unit) {
+fun GlassIconButton(kind: KI, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val p = LocalCall.current
-    IconButton(onClick = onClick, modifier = Modifier.size(48.dp).clip(CircleShape).background(p.glass).border(1.dp, p.line, CircleShape)) { KIcon(kind, p.ink, 22.dp, label) }
+    IconButton(
+        onClick = onClick,
+        modifier = modifier
+            .size(44.dp)
+            .pressFeedback()
+            .clip(CircleShape)
+            .background(p.glass)
+            .border(1.dp, p.gline, CircleShape)
+    ) { KIcon(kind, p.ink, 20.dp, label) }
 }
 
-/** A row that opens something: drawn icon, title, optional detail, chevron. 64 dp tall. */
+/** A row that opens something: drawn icon, title, optional detail, chevron. 60 dp tall. */
 @Composable
-fun NavRow(icon: KI, title: String, detail: String? = null, onClick: () -> Unit) {
+fun NavRow(icon: KI, title: String, detail: String? = null, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val p = LocalCall.current
-    Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(18.dp)).background(p.glass).border(1.dp, p.line, RoundedCornerShape(18.dp))
-        .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(40.dp).clip(CircleShape).background(p.violet.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) { KIcon(icon, p.ink, 22.dp) }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 60.dp)
+            .pressFeedback()
+            .clip(RoundedCornerShape(18.dp))
+            .background(p.glass)
+            .border(1.dp, p.hair, RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier.size(36.dp).clip(CircleShape).background(p.blue.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) { KIcon(icon, p.blue, 20.dp) }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium, color = p.ink)
             if (detail != null) Text(detail, style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
         }
-        KIcon(KI.CHEVRON, p.inkMuted, 20.dp)
+        KIcon(KI.CHEVRON, p.inkMuted, 18.dp)
     }
 }
+
 
 /** Initial in a heat-coloured disc: who it is, and how near, at a glance. */
 @Composable
@@ -261,6 +315,313 @@ fun LivePill(text: String, color: Color) {
         Text(text, style = MaterialTheme.typography.labelLarge, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
+
+// ------------------------------------------------------------------ prototype v3 components
+
+/**
+ * Avatar matching prototype v3 .av:
+ * Initial on two-stop gradient (top = mix(col, white, 0.28), bottom = col).
+ * Stale members show hair background and sec text color.
+ */
+@Composable
+fun MemberAvatar(
+    name: String,
+    modifier: Modifier = Modifier,
+    colorIndex: Int = 0,
+    size: Dp = 46.dp,
+    stale: Boolean = false,
+) {
+    val p = LocalCall.current
+    val baseCol = memberColor(colorIndex)
+    val topCol = lerp(baseCol, Color.White, 0.28f)
+    val bg = if (stale) SolidColor(p.hair) else Brush.verticalGradient(listOf(topCol, baseCol))
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(bg),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = name.take(1).uppercase(),
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = (size.value * 0.42f).sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (stale) p.inkMuted else Color.White
+            )
+        )
+    }
+}
+
+/**
+ * Inset card matching prototype v3 .card:
+ * Rounded rectangle (20 dp) clipping its contents on grouped ground.
+ */
+@Composable
+fun InsetCard(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(20.dp),
+    backgroundColor: Color? = null,
+    padding: PaddingValues = PaddingValues(0.dp),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val p = LocalCall.current
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(backgroundColor ?: p.card)
+            .border(1.dp, p.hair, shape)
+            .padding(padding),
+        content = content,
+    )
+}
+
+/**
+ * List row matching prototype v3 .row:
+ * Avatar, bold title (17sp), status description, distance (20sp bold) with directional chevron.
+ */
+@Composable
+fun MemberRow(
+    name: String,
+    status: String,
+    distanceM: Int?,
+    modifier: Modifier = Modifier,
+    colorIndex: Int = 0,
+    bearingDeg: Double? = null,
+    stale: Boolean = false,
+    outsideCircle: Boolean = false,
+    onClick: () -> Unit = {},
+) {
+    val p = LocalCall.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .pressFeedback()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(13.dp),
+    ) {
+        MemberAvatar(name = name, colorIndex = colorIndex, size = 46.dp, stale = stale)
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = name,
+                style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp, fontWeight = FontWeight.SemiBold),
+                color = p.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = status,
+                style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                color = when {
+                    stale -> p.inkMuted
+                    outsideCircle -> p.orange
+                    else -> p.green
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (distanceM != null) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "$distanceM",
+                    style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
+                    color = p.ink,
+                )
+                Text(
+                    text = " m",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, color = p.inkMuted),
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+            }
+        }
+        if (!stale) {
+            val rot = (bearingDeg ?: 0.0).toFloat()
+            KIcon(
+                kind = KI.CHEVRON,
+                tint = p.blue,
+                size = 20.dp,
+                modifier = Modifier.graphicsLayer { rotationZ = rot }
+            )
+        }
+    }
+}
+
+/**
+ * Segmented control matching prototype v3 .seg:
+ * Pill container with animated sliding card indicator.
+ */
+@Composable
+fun <T> SegmentedControl(
+    items: List<T>,
+    selectedItem: T,
+    onSelect: (T) -> Unit,
+    modifier: Modifier = Modifier,
+    label: (T) -> String = { it.toString() },
+) {
+    val p = LocalCall.current
+    val selectedIndex = items.indexOf(selectedItem).coerceAtLeast(0)
+    val animatedIndex by animateFloatAsState(
+        targetValue = selectedIndex.toFloat(),
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioLowBouncy),
+        label = "segThumb"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(p.hair.copy(alpha = 0.15f))
+            .padding(3.dp)
+    ) {
+        val count = items.size.coerceAtLeast(1)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(1f / count)
+                .height(36.dp)
+                .graphicsLayer {
+                    translationX = animatedIndex * (this.size.width)
+                }
+                .clip(RoundedCornerShape(11.dp))
+                .shadow(2.dp, RoundedCornerShape(11.dp))
+                .background(p.card)
+        )
+        Row(Modifier.fillMaxWidth()) {
+            for (item in items) {
+                val isSelected = item == selectedItem
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp)
+                        .pressFeedback()
+                        .clickable { onSelect(item) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label(item),
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 14.sp
+                        ),
+                        color = if (isSelected) p.ink else p.inkMuted
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Large title matching prototype v3 .lt:
+ * 34sp bold with letter spacing -1px, padding 20 dp horizontal, 12 dp vertical.
+ */
+@Composable
+fun LargeTitle(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+) {
+    val p = LocalCall.current
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.displaySmall.copy(
+                fontSize = 34.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-1).sp
+            ),
+            color = p.ink,
+        )
+        if (subtitle != null) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = p.inkMuted,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Header SOS button matching prototype v3 .sosb:
+ * 44 dp height, pill shape (22 dp radius), emergency red (#FF3B30),
+ * icon + bold "SOS", drop shadow 0 6px 20px rgba(255, 59, 48, 0.45).
+ */
+@Composable
+fun SosPillButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = "SOS",
+) {
+    val p = LocalCall.current
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .shadow(6.dp, RoundedCornerShape(22.dp), ambientColor = Color(0x66FF3B30), spotColor = Color(0x80FF3B30))
+            .clip(RoundedCornerShape(22.dp))
+            .background(p.red)
+            .pressFeedback()
+            .clickable(onClick = onClick)
+            .padding(start = 12.dp, end = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        KIcon(KI.SIREN, Color.White, size = 20.dp)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.3.sp
+            ),
+            color = Color.White
+        )
+    }
+}
+
+/**
+ * Giant SOS block matching prototype v3 .bigsos (for Simple Mode & emergency actions):
+ * 110 dp height, 36 dp rounded corners, giant 44sp bold label, siren icon, glowing emergency shadow.
+ */
+@Composable
+fun BigSosButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    label: String = "SOS",
+) {
+    val p = LocalCall.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(110.dp)
+            .shadow(16.dp, RoundedCornerShape(36.dp), ambientColor = Color(0x73FF3B30), spotColor = Color(0x99FF3B30))
+            .clip(RoundedCornerShape(36.dp))
+            .background(p.red)
+            .pressFeedback()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 24.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        KIcon(KI.SIREN, Color.White, size = 48.dp)
+        Spacer(Modifier.width(16.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.displayMedium.copy(
+                fontSize = 44.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp
+            ),
+            color = Color.White
+        )
+    }
+}
+
 
 /** Draws a heat ripple: [count] broken sound arcs around [center], phase 0..1 pushing them outward. */
 fun DrawScope.soundArcs(center: Offset, maxR: Float, phase: Float, colors: List<Color>, count: Int = 5, width: Float = 2.5f) {
