@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KHOJ</string>
+    <string name="tagline">Find your family and friends in any crowd, even with no network</string>
+
+    <!-- Setup -->
+    <string name="choose_language">Choose your language</string>
+    <string name="next">Next</string>
+    <string name="back">Back</string>
+    <string name="your_name">Your name</string>
+    <string name="i_am">I am a…</string>
+    <string name="role_member">With family or friends</string>
+    <string name="role_volunteer">Helper (volunteer, staff, police)</string>
+    <string name="role_police">Police / official</string>
+    <string name="helper_desc">Helpers see everyone who asks for help nearby, scan wristbands and keep the offline network strong. Police and officials can also unlock signed alerts in Settings.</string>
+    <string name="family_group">Your family group</string>
+    <string name="family_create">Start a new family group</string>
+    <string name="family_scan">Scan family QR to join</string>
+    <string name="family_code">Or type the family code</string>
+    <string name="join">Join</string>
+    <string name="family_show_qr">Your family scans this to join</string>
+    <string name="bad_code">That code is not valid</string>
+    <string name="skip">Skip</string>
+    <string name="permissions_title">Allow KHOJ to help you</string>
+    <string name="permissions_body">KHOJ uses Bluetooth, nearby devices, location, notifications and the camera to find your family without mobile network. Nothing is shared outside your family unless you ask for help.</string>
+    <string name="allow">Allow</string>
+    <string name="start_khoj">Start KHOJ</string>
+
+    <!-- Home -->
+    <string name="status_on">Offline network on · %1$d family nearby</string>
+    <string name="status_off">KHOJ is off</string>
+    <string name="turn_on">Turn on</string>
+    <string name="sos_hold">HOLD FOR SOS</string>
+    <string name="sos_hold_short">HOLD 2 SECONDS</string>
+    <string name="sos_hint">Hold the red button for 2 seconds</string>
+    <string name="sos_sent">SOS sent. Your family and helpers nearby are alerted.</string>
+    <string name="stop_siren">STOP SIREN</string>
+    <string name="sos_no_gps">No GPS position yet. SOS was sent; your position follows as soon as GPS finds it.</string>
+    <string name="sos_no_mesh">The siren is on, but the offline network could not start. Turn on Bluetooth.</string>
+    <string name="position_unknown">position not known yet</string>
+    <string name="my_family">My family</string>
+    <string name="family_empty">No family member heard yet</string>
+    <string name="seen_ago">%1$s ago</string>
+    <string name="secs">%1$d s</string>
+    <string name="mins">%1$d min</string>
+    <string name="metres_dir">%1$d m %2$s</string>
+    <string name="meet_point">Meeting point</string>
+    <string name="set_meet_here">Make my place the meeting point</string>
+    <string name="meet_sent">Meeting point sent to your family</string>
+    <string name="found_someone">Found someone</string>
+    <string name="child_bands">Bands for children and elders</string>
+    <string name="rewind">Rewind</string>
+    <string name="settings">Settings</string>
+    <string name="you">You</string>
+
+    <!-- Alerts -->
+    <string name="lost_contact">Lost contact with %1$s</string>
+    <string name="last_seen">Last seen %1$s</string>
+    <string name="left_circle">%1$s left the group circle</string>
+    <string name="left_circle_body">Now %1$s. Your circle is %2$d m.</string>
+    <string name="circle_title">Group circle</string>
+    <string name="circle_desc">Every phone in the group vibrates and shows an alert when someone goes farther than this, or out of range.</string>
+    <string name="open_rewind">See what your pendant saw</string>
+    <string name="help_coming">Help is coming</string>
+    <string name="help_coming_body">%1$s is on the way</string>
+    <string name="found_alert">%1$s has been found</string>
+    <string name="found_alert_body">Found by %1$s, %2$s</string>
+    <string name="official_alert">Official alert</string>
+    <string name="sos_from">SOS from %1$s</string>
+    <string name="needs_help">Needs help %1$s</string>
+
+    <!-- Countdown -->
+    <string name="countdown_fall">Fall detected</string>
+    <string name="countdown_panic">Panic signal</string>
+    <string name="countdown_body">Calling for help in %1$d seconds</string>
+    <string name="cancel_sos">I\'M OK</string>
+    <string name="tts_fall">Are you okay? Help will be called in ten seconds. Press I am OK to stop.</string>
+    <string name="tts_panic">Help will be called in ten seconds. Press I am OK if this was a mistake.</string>
+
+    <!-- Scanning and found -->
+    <string name="scan_band">Scan wristband</string>
+    <string name="scan_hint">Point the camera at the QR code</string>
+    <string name="not_band">This is not a KHOJ wristband</string>
+    <string name="alert_family">Tell the family I have them</string>
+    <string name="family_received">The family\'s phone received it</string>
+    <string name="alert_waiting">Sent. Waiting for the family\'s phone…</string>
+    <string name="call_family">Call the family</string>
+    <string name="meet_at">Meet at: %1$s</string>
+    <string name="call_number">If lost, call: %1$s</string>
+
+    <!-- Volunteer and police -->
+    <string name="sos_nearby">People needing help</string>
+    <string name="none_needing_help">No one needs help right now</string>
+    <string name="im_going">I\'m going</string>
+    <string name="found_no_band">Found someone without a band</string>
+    <string name="describe_person">Age, clothes, name they say</string>
+    <string name="send_everyone">Send to everyone</string>
+    <string name="people_found">People found nearby</string>
+    <string name="police_alert">Official alert to everyone</string>
+    <string name="police_alert_hint">e.g. Gate 4 closed, use Gate 6</string>
+    <string name="police_locked">Police and officials: scan your authority key QR to send signed alerts to everyone</string>
+    <string name="scan_police_key">Scan official key</string>
+
+    <!-- Bands -->
+    <string name="make_band">Make a band</string>
+    <string name="band_name">Name</string>
+    <string name="band_age">Age</string>
+    <string name="band_phone">Family phone number</string>
+    <string name="band_meet">Meeting point</string>
+    <string name="save_band">Save band to Gallery for printing</string>
+    <string name="band_saved">Saved to Gallery (Pictures/KHOJ)</string>
+    <string name="delete">Delete</string>
+
+    <!-- Settings -->
+    <string name="pendant_mode">Pendant mode</string>
+    <string name="pendant_desc">Detects a fall or 4 hard shakes and calls for help after 10 seconds. Keeps the last 3 minutes of camera photos on this phone for Rewind.</string>
+    <string name="language">Language</string>
+    <string name="battery_saver">Battery saver</string>
+    <string name="battery_saver_desc">Uses much less battery: your phone shares its position every 15 seconds and stops passing on messages for others. Phones nearby hold your messages for you. Turns on by itself at 15% battery. SOS always works at full power.</string>
+    <string name="low_power_on">battery saver</string>
+    <string name="advanced">Advanced (radios, diagnostics, direct sharing)</string>
+    <string name="stop_khoj">Turn KHOJ off</string>
+    <string name="rewind_desc">What your pendant saw, newest first. Photos stay only on this phone and are erased when KHOJ turns off.</string>
+    <string name="rewind_empty">No photos yet. Turn on pendant mode in Settings.</string>
+
+    <string-array name="compass">
+        <item>N</item><item>NE</item><item>E</item><item>SE</item><item>S</item><item>SW</item><item>W</item><item>NW</item>
+    </string-array>
+</resources>

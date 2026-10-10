@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug builds only: renders the Find screen with SIMULATED data to check layouts. Never in a release build. -->
+        <activity android:name="app.linkfill.FindPreviewActivity" android:exported="true" />
+    </application>
+</manifest>

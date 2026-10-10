@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="find_button">FIND</string>
+    <string name="find_title">Finding %1$s</string>
+    <string name="find_stop">Stop finding</string>
+    <string name="find_sources">What this is based on</string>
+    <string name="find_test_tools">Test tools</string>
+    <string name="find_allow_ranging">Allow the ranging permission</string>
+
+    <string name="find_mode_precision_dir">Precise direction</string>
+    <string name="find_mode_precision_dist">Precise distance</string>
+    <string name="find_mode_gps">Direction from GPS (approximate)</string>
+    <string name="find_mode_ble">Bluetooth signal only</string>
+    <string name="find_mode_last">Last known position</string>
+    <string name="find_mode_none">No position yet</string>
+
+    <string name="find_distance">%1$d m</string>
+    <string name="find_distance_unc">about %1$d m (± %2$d m)</string>
+    <string name="find_measured_by">Measured by: %1$s</string>
+    <string name="find_confidence_high">high confidence</string>
+    <string name="find_confidence_medium">medium confidence</string>
+    <string name="find_confidence_low">low confidence</string>
+
+    <string name="find_prox_very_close">Very close</string>
+    <string name="find_prox_near">Close</string>
+    <string name="find_prox_medium">In the area</string>
+    <string name="find_prox_far">Far</string>
+    <string name="find_trend_improving">Signal getting stronger</string>
+    <string name="find_trend_worsening">Signal getting weaker</string>
+    <string name="find_trend_steady">Signal steady</string>
+    <string name="find_trend_unknown">Measuring…</string>
+    <string name="find_ble_help">Walk slowly and turn around. A stronger signal means closer. This does not show which way to go.</string>
+    <string name="find_no_direction">No reliable direction right now</string>
+    <string name="find_last_known">Last known: %1$s, %2$s ago</string>
+    <string name="find_gps_age">Their position is %1$s old</string>
+    <string name="find_heading_unc">Compass ±%1$d°</string>
+
+    <string name="find_note_ranging_stale">Ranging results stopped arriving</string>
+    <string name="find_note_no_angle">This hardware measures distance only, no direction</string>
+    <string name="find_note_angle_untrusted">Hardware direction is switched off until it is validated</string>
+    <string name="find_note_gps_close">Too close for GPS to show a direction</string>
+    <string name="find_note_gps_uncertain">GPS is too inaccurate for a direction</string>
+    <string name="find_note_heading_unreliable">Compass is unreliable: move away from metal or wave the phone in a figure 8</string>
+    <string name="find_note_my_loc_missing">Waiting for your own GPS position</string>
+    <string name="find_note_my_loc_old">Your GPS position is old</string>
+    <string name="find_note_target_old">Their last position is old, so no arrow is shown</string>
+    <string name="find_note_ble_not_heard">Their Bluetooth is not heard right now</string>
+    <string name="find_note_rssi_low">Bluetooth signal too unsteady to use</string>
+
+    <string name="being_found">Someone is finding you</string>
+    <string name="being_found_by">%1$s is finding you with ranging</string>
+    <string name="find_mode_walk">Direction from walking (estimated)</string>
+    <string name="find_walk_keep">Keep walking. The arrow improves as you move.</string>
+    <string name="find_note_walk_more">Walk a few more steps to get a direction</string>
+    <string name="find_note_walk_sideways">Walk a few steps sideways or turn a corner to get a direction</string>
+    <string name="find_note_walk_ambiguous">Two places fit the measurements; keep walking and turn a corner</string>
+    <string name="find_note_walk_poor">The distances do not fit one spot (are they moving?)</string>
+    <string name="pause_being_found">Pause for 30 minutes</string>
+</resources>

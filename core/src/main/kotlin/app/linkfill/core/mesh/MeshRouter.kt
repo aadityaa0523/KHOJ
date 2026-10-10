@@ -1,0 +1,350 @@
+package app.linkfill.core.mesh
+
+import kotlin.random.Random
+
+/** How hard the radio works. Chosen from predicted loss risk (see [MeshRouter.updateMode]). */
+enum class LinkMode(val repeats: Int, val coded: Boolean, val label: String) {
+    NORMAL(1, false, "Normal"),
+    MEDIUM(2, false, "Extra copies (2x)"),
+    HIGH(3, true, "Extra copies (3x), long range"),
+}
+
+class MeshConfig(
+    val defaultTtl: Int = 6,
+    val urgentRepeatMs: Long = 10_000,
+    val urgentMaxSends: Int = 6,
+    val relayBaseMs: Long = 40,
+    val relayJitterMs: Long = 250,
+    val relayRssiSpreadMs: Long = 400,
+    /** Cancel a pending relay once this many *other* relays were heard carrying the same packet. */
+    val suppressAfter: Int = 2,
+    val seenMemoryMs: Long = 120_000,
+    val maxAgeS: Long = 600,
+    val maxQueue: Int = 64,
+    val codedSupported: Boolean = false,
+    val suppression: Boolean = true,
+    /** Store-carry-forward: how many urgent packets each phone keeps to hand to phones that arrive later. */
+    val carryMax: Int = 32,
+    /** A phone not heard for this long counts as newly arrived, and is offered the carried packets. */
+    val newNeighborGapMs: Long = 60_000,
+    /** At most this many carried packets per offer, newest first. */
+    val offerMax: Int = 8,
+    val offerEveryMs: Long = 5_000,
+)
+
+interface MeshListener {
+    fun onMessage(originId: Int, message: MeshMessage, hops: Int, rssi: Int, ageS: Long) {}
+    fun onAcked(packetId: Int, byOriginId: Int) {}
+    /** Messages for everyone (volunteers, police, families of a wristband); see [PublicMessage]. */
+    fun onPublic(packet: MeshPacket, message: PublicMessage, hops: Int, rssi: Int, ageS: Long) {}
+}
+
+class MeshStats {
+    var framesIn = 0; var framesOut = 0; var malformed = 0; var repeatedFrames = 0
+    var carriedOffered = 0; var friendPolls = 0
+    var duplicates = 0; var delivered = 0; var authFailed = 0; var tooOld = 0
+    var relayed = 0; var relayScheduled = 0; var suppressed = 0; var foreignRelayed = 0; var queueDropped = 0
+    var originated = 0; var urgentResends = 0; var acksReceived = 0
+    var publicDelivered = 0; var publicRateLimited = 0
+}
+
+/**
+ * Managed flooding over any broadcast radio (BLE advertising on phones, or a LoRa radio later).
+ * Every node relays every KHOJ packet once, after a short random delay; nodes that heard the
+ * packet strongly wait longer, so the farthest nodes relay first, and a node cancels its relay if
+ * enough other relays already carried it. Time is passed in, so the same code runs on phones and in
+ * the simulator. Not thread-safe.
+ */
+class MeshRouter(
+    val nodeId: Int,
+    var crew: CrewKey?,
+    private val config: MeshConfig,
+    private val random: Random,
+    private val listener: MeshListener,
+    var predictor: LossPredictor? = null,
+) {
+    val links = LinkTracker()
+    val stats = MeshStats()
+
+    /**
+     * Internet bridge: called once for every packet this phone originates and for every new packet it first
+     * hears over a local radio. A phone with mobile data uploads it, independent of local relay suppression
+     * (in a dense crowd most local relays are suppressed, but the upload is what carries it beyond the crowd).
+     */
+    var bridge: ((frame: ByteArray, packet: MeshPacket) -> Unit)? = null
+
+    /**
+     * Called for every valid Bluetooth advertising frame with the phone that transmitted it ([relayId], which is the
+     * originator itself when the frame is its own) and the signal strength it arrived with. Used by Find Member to track
+     * the signal from one specific crew member. Only frames heard directly over Bluetooth are reported.
+     */
+    var rssiObserver: ((relayId: Int, rssi: Int, coded: Boolean, now: Long) -> Unit)? = null
+    var mode = LinkMode.NORMAL
+        private set
+
+    /**
+     * Low-power member (Bluetooth Mesh's "low power node", adapted): this phone does not relay or carry for others and
+     * marks its frames, so any normal phone that hears it acts as its friend and re-offers what it may have missed
+     * while its radio slept.
+     */
+    var lowPower = false
+    var risk: Double? = null
+        private set
+
+    private class Out(val packet: MeshPacket, var repeatsLeft: Int, val dueAt: Long, val priority: Int, val isRelay: Boolean) {
+        val otherRelays = mutableSetOf<Int>()
+        var firstRelay = 0
+    }
+
+    /** Resends reuse the original encrypted packet unchanged: a new timestamp under the same nonce would break AES-GCM. */
+    private class Urgent(val packet: MeshPacket, var sends: Int, var lastSent: Long)
+
+    private val queue = ArrayList<Out>()
+    private val seen = LinkedHashMap<Long, Long>()
+    private val pendingRelay = HashMap<Long, Out>()
+    private val urgent = LinkedHashMap<Int, Urgent>()
+    private val acked = mutableSetOf<Long>()
+    private val publicTimes = HashMap<Int, ArrayDeque<Long>>()
+
+    /** Urgent packets kept for later arrivals, ready to transmit, with the time each was stored. */
+    private class Carried(val packet: MeshPacket, val at: Long)
+    private val carried = LinkedHashMap<Long, Carried>()
+    /** Carried packets stay "seen" for their whole life, so a re-offer is never delivered twice. */
+    private val longSeen = HashMap<Long, Long>()
+    private val lastHeardFrom = HashMap<Int, Long>()
+    private val lastOfferTo = HashMap<Int, Long>()
+    private var lastNewcomerOffer = 0L
+    private var linkSeq = random.nextInt(0, 0xFFFF)
+    private var packetSeq = random.nextInt()
+    private var lowRiskSince = 0L
+    private var lastModeUpdate = 0L
+
+    /** Sends a crew message. SOS and RALLY are repeated until a crew member acknowledges them. Returns the packet id. */
+    fun originate(message: MeshMessage, now: Long, ttl: Int = config.defaultTtl): Int {
+        val key = crew ?: error("join a crew before sending")
+        val (type, plain) = MeshMessage.encode(message)
+        val id = ++packetSeq
+        val bare = MeshPacket(type, ttl, 0, nodeId, 0, key.crewId, nodeId, id, now / 1000, ByteArray(0))
+        val packet = MeshPacket(type, ttl, 0, nodeId, 0, key.crewId, nodeId, id, now / 1000, key.seal(bare, plain))
+        seen[packet.key] = now
+        stats.originated++
+        val priority = when (type) { MeshType.SOS, MeshType.ACK -> 0; MeshType.RALLY, MeshType.TEXT -> 1; else -> 3 }
+        if (type == MeshType.BEACON) queue.removeAll { !it.isRelay && it.packet.type == MeshType.BEACON } // only the newest position matters
+        enqueue(Out(packet, mode.repeats, now, priority, isRelay = false))
+        if (type == MeshType.SOS || type == MeshType.RALLY) urgent[id] = Urgent(packet, 1, now)
+        carry(packet, now)
+        bridge?.invoke(MeshPacket.encode(packet), packet)
+        return id
+    }
+
+    /**
+     * Handles a frame from any transport. Only Bluetooth advertising frames feed the link tracker (its PDR
+     * is measured from link sequence numbers); copies of a packet arriving over several transports are
+     * dropped by the packet-level duplicate filter below.
+     */
+    /**
+     * Sends a public message (not crew-sealed). Found reports and public SOS are repeated every 10 s, up to
+     * 6 times, until [cancelRepeats] is called (when a FOUND_ACK or RESPOND arrives).
+     */
+    fun originatePublic(message: PublicMessage, now: Long, crewId: Int = 0, ttl: Int = config.defaultTtl): Int {
+        val (type, body) = PublicMessage.encode(message)
+        val id = ++packetSeq
+        val packet = MeshPacket(type, ttl, 0, nodeId, 0, crewId, nodeId, id, now / 1000, body)
+        seen[packet.key] = now
+        stats.originated++
+        enqueue(Out(packet, mode.repeats, now, 0, isRelay = false))
+        if (type == MeshType.FOUND || type == MeshType.PUBLIC_SOS) urgent[id] = Urgent(packet, 1, now)
+        carry(packet, now)
+        bridge?.invoke(MeshPacket.encode(packet), packet)
+        return id
+    }
+
+    fun cancelRepeats(packetId: Int) { urgent.remove(packetId) }
+
+    /** At most 5 public packets per 10 s from one sender, so one phone cannot flood volunteers' screens. */
+    private fun publicAllowed(originId: Int, now: Long): Boolean {
+        val q = publicTimes.getOrPut(originId) { ArrayDeque() }
+        while (q.isNotEmpty() && now - q.first() > 10_000) q.removeFirst()
+        if (q.size >= 5) return false
+        q.addLast(now)
+        if (publicTimes.size > 512) publicTimes.keys.firstOrNull()?.let(publicTimes::remove)
+        return true
+    }
+
+    fun onFrame(bytes: ByteArray, rssi: Int, coded: Boolean, now: Long, via: TransportKind = TransportKind.BLE) {
+        val p = MeshPacket.decode(bytes) ?: run { stats.malformed++; return }
+        stats.framesIn++
+        if (via == TransportKind.BLE && !links.onFrame(p.relayId, p.linkSeq, rssi, coded, now)) { stats.repeatedFrames++; return }
+        if (via == TransportKind.BLE) rssiObserver?.invoke(p.relayId, rssi, coded, now)
+        if (via != TransportKind.INTERNET) offerCarried(p.relayId, p.fromLowPower, now)
+        if (p.type == MeshType.NEIGHBOR || p.originId == nodeId) return
+        val k = p.key
+        if (seen.containsKey(k) || longSeen.containsKey(k)) {
+            stats.duplicates++
+            pendingRelay[k]?.let { if (p.relayId != it.firstRelay) it.otherRelays += p.relayId }
+            return
+        }
+        seen[k] = now
+        val ageS = now / 1000 - p.originTimeS
+        if (ageS > config.maxAgeS || ageS < -60) { stats.tooOld++; return }
+
+        val myCrew = crew
+        if (p.type in PublicMessage.TYPES) {
+            if (!publicAllowed(p.originId, now)) { stats.publicRateLimited++; return }
+            val m = PublicMessage.decode(p.type, p.body) ?: run { stats.malformed++; return }
+            stats.publicDelivered++
+            listener.onPublic(p, m, p.hops, rssi, ageS)
+        } else if (myCrew != null && p.crewId == myCrew.crewId) {
+            val plain = myCrew.open(p)
+            if (plain == null) { stats.authFailed++; return } // forged or corrupted: neither delivered nor relayed
+            MeshMessage.decode(p.type, plain)?.let { deliver(p, it, rssi, ageS, now) }
+        } else stats.foreignRelayed++
+
+        if (via != TransportKind.INTERNET) bridge?.invoke(bytes, p)
+        if (!lowPower) carry(if (p.ttl > 0) p.relayed(nodeId, 0) else p, now)
+        if (p.ttl > 0 && !lowPower) {
+            val strength = ((rssi + 95) / 45.0).coerceIn(0.0, 1.0)
+            val delay = config.relayBaseMs + (strength * config.relayRssiSpreadMs).toLong() + random.nextLong(config.relayJitterMs + 1)
+            val urgentType = p.type == MeshType.SOS || p.type == MeshType.ACK || p.type == MeshType.PUBLIC_SOS || p.type == MeshType.OFFICIAL || p.type == MeshType.FOUND || p.type == MeshType.FOUND_ACK
+            val out = Out(p.relayed(nodeId, 0), 1, now + delay, if (urgentType) 0 else 2, isRelay = true)
+            out.firstRelay = p.relayId
+            pendingRelay[k] = out
+            stats.relayScheduled++
+            enqueue(out)
+        }
+    }
+
+    private fun deliver(p: MeshPacket, m: MeshMessage, rssi: Int, ageS: Long, now: Long) {
+        stats.delivered++
+        if (m is MeshMessage.Ack) {
+            if (m.originId == nodeId) {
+                stats.acksReceived++
+                if (acked.add((m.originId.toLong() shl 32) or (m.packetId.toLong() and 0xFFFFFFFFL))) listener.onAcked(m.packetId, p.originId)
+                urgent.remove(m.packetId)
+            }
+            return
+        }
+        listener.onMessage(p.originId, m, p.hops, rssi, ageS)
+        if (p.type == MeshType.SOS || p.type == MeshType.RALLY) originate(MeshMessage.Ack(p.originId, p.packetId), now)
+    }
+
+    /** Next frame to put on the air. With [allowFiller], an empty link-measurement frame is sent when idle. */
+    fun nextFrame(now: Long, allowFiller: Boolean = true): ByteArray? {
+        while (true) {
+            val next = queue.filter { it.dueAt <= now }.minWithOrNull(compareBy<Out> { it.priority }.thenBy { it.dueAt }) ?: break
+            if (next.isRelay && config.suppression && next.otherRelays.size >= config.suppressAfter) {
+                queue.remove(next); pendingRelay.remove(next.packet.key); stats.suppressed++
+                continue
+            }
+            next.repeatsLeft--
+            if (next.repeatsLeft <= 0) { queue.remove(next); pendingRelay.remove(next.packet.key) }
+            if (next.isRelay) { stats.relayed++ }
+            stats.framesOut++
+            return MeshPacket.encode(next.packet.onLink(nodeId, nextLinkSeq(), lowPower))
+        }
+        if (!allowFiller || lowPower) return null
+        stats.framesOut++
+        return MeshPacket.encode(MeshPacket(MeshType.NEIGHBOR, 0, 0, nodeId, nextLinkSeq(), 0, nodeId, 0, now / 1000, ByteArray(0)))
+    }
+
+    private fun nextLinkSeq(): Int { linkSeq = (linkSeq + 1) and 0xFFFF; return linkSeq }
+
+    fun tick(now: Long) {
+        for (u in urgent.values.toList()) {
+            if (now - u.lastSent >= config.urgentRepeatMs) {
+                if (u.sends >= config.urgentMaxSends) { urgent.remove(u.packet.packetId); continue }
+                // Receivers that already have it drop it as a duplicate; new ones in range now get it.
+                queue.firstOrNull { !it.isRelay && it.packet.packetId == u.packet.packetId }?.let { it.repeatsLeft = mode.repeats }
+                    ?: enqueue(Out(u.packet, mode.repeats, now, 0, isRelay = false))
+                u.sends++; u.lastSent = now; stats.urgentResends++
+            }
+        }
+        val it = seen.entries.iterator()
+        while (it.hasNext()) if (now - it.next().value > config.seenMemoryMs) it.remove()
+        val maxAgeMs = config.maxAgeS * 1000
+        longSeen.values.removeAll { now - it > maxAgeMs + 60_000 }
+        carried.values.removeAll { now - it.packet.originTimeS * 1000 > maxAgeMs }
+        lastHeardFrom.values.removeAll { now - it > config.newNeighborGapMs * 5 }
+        lastOfferTo.values.removeAll { now - it > config.newNeighborGapMs * 5 }
+        links.prune(now)
+        if (now - lastModeUpdate >= 1_000) { lastModeUpdate = now; updateMode(now) }
+    }
+
+    /** Neighbour risk per active neighbour (model if loaded, else 1 - PDR over 2 s). */
+    fun neighborRisks(now: Long): Map<Int, Double> = links.neighbors.values.filter { now - it.lastRxMs <= 10_000 }.associate { n ->
+        n.id to (predictor?.predict(links.features(n.id, now, queue.size, mode.coded)) ?: (1 - links.pdr(n.id, 2_000, now)))
+    }
+
+    /**
+     * Picks the link mode from the median neighbour risk, with hysteresis: step up at once, step down only
+     * after 10 s of lower risk. No neighbours at all also means "reach further". Long range needs chip support.
+     */
+    fun updateMode(now: Long) {
+        val risks = neighborRisks(now).values.sorted()
+        val r = if (risks.isEmpty()) 1.0 else risks[risks.size / 2]
+        risk = if (risks.isEmpty()) null else r
+        val want = when {
+            r >= 0.6 && config.codedSupported -> LinkMode.HIGH
+            r >= 0.3 -> LinkMode.MEDIUM
+            else -> LinkMode.NORMAL
+        }
+        if (want.ordinal >= mode.ordinal) { mode = want; lowRiskSince = now }
+        else if (now - lowRiskSince >= 10_000) { mode = want; lowRiskSince = now }
+    }
+
+    val queueSize get() = queue.size
+    val carriedCount get() = carried.size
+
+    /** Keeps urgent packets (help requests, found reports, acknowledgements, official alerts, meeting points). */
+    private fun carry(p: MeshPacket, now: Long) {
+        if (p.type !in CARRY_TYPES) return
+        longSeen[p.key] = now
+        carried[p.key] = Carried(p, now)
+        while (carried.size > config.carryMax) carried.remove(carried.keys.first())
+    }
+
+    /**
+     * Healing across gaps in the crowd. Managed flooding only reaches phones in range at that moment; people move,
+     * so every phone carries urgent packets for their lifetime and offers them when (a) a phone it has not heard for
+     * a minute appears (someone walked into range, or a split group rejoined), or (b) a low-power member wakes and
+     * transmits (friend role): then everything stored since its previous frame. Offers go out as relays, so other
+     * carriers offering the same packet suppress each other, and phones that already have it drop it as a duplicate.
+     */
+    private fun offerCarried(from: Int, fromLowPower: Boolean, now: Long) {
+        val prev = lastHeardFrom.put(from, now)
+        if (lowPower || carried.isEmpty() || from == nodeId) return
+        val picks = if (fromLowPower) {
+            if (now - (lastOfferTo[from] ?: 0L) < config.offerEveryMs) return
+            stats.friendPolls++
+            val since = (prev ?: 0L) - 1_000
+            carried.values.filter { it.at >= since }
+        } else {
+            if (prev != null && now - prev < config.newNeighborGapMs) return
+            if (now - lastNewcomerOffer < config.offerEveryMs) return
+            lastNewcomerOffer = now
+            carried.values.toList()
+        }
+        lastOfferTo[from] = now
+        for (c in picks.takeLast(config.offerMax)) {
+            if (queue.any { it.packet.key == c.packet.key }) continue
+            val out = Out(c.packet, 1, now + config.relayBaseMs + random.nextLong(config.relayJitterMs * 2 + 1), 1, isRelay = true)
+            out.firstRelay = from
+            pendingRelay[c.packet.key] = out
+            stats.carriedOffered++
+            enqueue(out)
+        }
+    }
+    val pendingUrgent get() = urgent.size
+
+    companion object {
+        val CARRY_TYPES = setOf(MeshType.SOS, MeshType.ACK, MeshType.RALLY, MeshType.PUBLIC_SOS, MeshType.RESPOND, MeshType.FOUND, MeshType.FOUND_ACK, MeshType.OFFICIAL)
+    }
+
+    private fun enqueue(o: Out) {
+        queue += o
+        while (queue.size > config.maxQueue) {
+            val victim = queue.filter { it.isRelay }.maxByOrNull { it.priority } ?: queue.first()
+            queue.remove(victim); pendingRelay.remove(victim.packet.key); stats.queueDropped++
+        }
+    }
+}

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Nearby Connections, per https://developers.google.com/nearby/connections/android/get-started -->
+    <!-- Docs list these as maxSdk 31, but Nearby on Android 16 still reports them missing; they are normal (auto-granted) permissions. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+
+    <!-- The shared location itself (and, on Android 10-12, Nearby discovery). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- Keeps an active, user-started session alive with a visible notification and a Stop button. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <!-- Wristband scanning and the pendant's Rewind buffer (photos stay in memory on the phone). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Haptic cues: the fall/panic countdown and the Find Member "signal getting stronger" buzz. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Android 16 Ranging module (UWB, Bluetooth Channel Sounding, Wi-Fi RTT). Requested only when Find Member needs it. -->
+    <uses-permission android:name="android.permission.RANGING" />
+    <!-- Lets the user exempt the mesh from battery optimisation so it keeps relaying with the screen off. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Cleartext is allowed so a relay on a laptop (http://LAN-IP:8787) works in demos. Mesh packets are
+         already encrypted with the crew key; only packet metadata would be visible on such a link. -->
+    <application
+        android:name=".LinkFillApp"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/Theme.LinkFill">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".service.SessionService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+        <service
+            android:name=".service.MeshService"
+            android:exported="false"
+            android:foregroundServiceType="location|connectedDevice|camera" />
+    </application>
+</manifest>
