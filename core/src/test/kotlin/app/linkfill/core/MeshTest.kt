@@ -83,6 +83,14 @@ class MeshTest {
         }
     }
 
+    @Test fun longHindiAndTamilMessagesAreCutOnACharacterBoundary() {
+        for (text in listOf("नमस्ते ".repeat(20), "வணக்கம் ".repeat(20))) {
+            val (type, bytes) = MeshMessage.encode(MeshMessage.Text(text))
+            val back = MeshMessage.decode(type, bytes) as MeshMessage.Text
+            assertTrue(text.startsWith(back.text)); assertTrue(back.text.isNotEmpty()); assertTrue(!back.text.contains('\uFFFD'))
+        }
+    }
+
     @Test fun lightRequestsOutsideTheSafeRangeAreRejected() {
         for ((modes, dur) in listOf(0 to 60, 8 to 60, 1 to 4, 1 to 301)) {
             val (type, bytes) = MeshMessage.encode(MeshMessage.Light(1, modes, dur))

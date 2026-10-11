@@ -130,7 +130,7 @@ fun VoiceDialog(s: MeshUiState, mesh: MeshController, onFind: (Int) -> Unit, onS
 
     // What the command means: SOS words, or a group member's name.
     val text = heard.lowercase()
-    val sos = !message && listOf("sos", "help", "emergency", "मदद", "बचाओ").any { text.contains(it) }
+    val sos = !message && listOf("sos", "help", "emergency", "एसओएस", "मदद", "बचाओ", "सहायता", "एमरजेंसी", "எஸ்ஓஎஸ்", "உதவி", "காப்பாற்று", "ஆபத்து").any { text.contains(it) }
     val member = if (!message && !sos) s.members.firstOrNull { text.contains(it.name.lowercase()) } else null
 
     AlertDialog(

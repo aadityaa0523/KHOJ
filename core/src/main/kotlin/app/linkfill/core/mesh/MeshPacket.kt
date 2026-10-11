@@ -191,8 +191,11 @@ sealed interface MeshMessage {
 
         private fun okLatLon(lat: Double, lon: Double) = lat in -90.0..90.0 && lon in -180.0..180.0
 
+        /** The largest length up to [max] that does not cut a multi-byte character in half (Hindi and Tamil letters take 3 bytes). */
+        private fun utf8Cut(bytes: ByteArray, max: Int): Int { var n = max; while (n > 0 && bytes[n].toInt() and 0xC0 == 0x80) n--; return n }
+
         private inline fun buf(fixed: Int, text: String, block: ByteBuffer.() -> Unit): ByteArray {
-            val t = text.toByteArray(Charsets.UTF_8).let { if (it.size > MAX_TEXT) it.copyOf(MAX_TEXT) else it }
+            val t = text.toByteArray(Charsets.UTF_8).let { if (it.size > MAX_TEXT) it.copyOf(utf8Cut(it, MAX_TEXT)) else it }
             return ByteBuffer.allocate(fixed + t.size).apply { block(); put(t) }.array()
         }
 
