@@ -204,4 +204,7 @@
     <string name="tab_scan">ஸ்கேன்</string>
     <string name="tab_alerts">எச்சரிக்கைகள்</string>
     <string name="band_pass_label">KHOJ · குழந்தை கைப்பட்டை</string>
+    <string name="haptic_title">அதிர்வு வழிகாட்டி</string>
+    <string name="haptic_desc">அவர்களை நோக்கினால் வேகமான அதிர்வு, பார்க்காமலே திசை தெரியும்</string>
+    <string name="health_title">மெஷ் நிலை</string>
 </resources>

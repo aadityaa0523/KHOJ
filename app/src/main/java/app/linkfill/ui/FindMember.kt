@@ -126,6 +126,10 @@ fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, 
     val still = rememberReducedMotion()
     val drift = if (still) null else rememberInfiniteTransition(label = "blob").animateFloat(0f, 1f, infiniteRepeatable(tween(14_000, easing = LinearEasing), RepeatMode.Reverse), label = "d")
     val sentence = spokenFind(ui.targetName, s.distanceM, ui.arrowSmoothedDeg)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("mesh", android.content.Context.MODE_PRIVATE) }
+    var haptic by remember { mutableStateOf(prefs.getBoolean("haptic_find", false)) }
+    HapticGuide(haptic, ui.arrowSmoothedDeg)
     // The whole screen is white-on-colour, so every component below reads white inks.
     val fp = p0.copy(ink = Color.White, inkMuted = Color(0xC7FFFFFF), glass = Color(0x2EFFFFFF), glassStrong = Color(0x33FFFFFF), line = Color(0x4DFFFFFF), gline = Color(0x4DFFFFFF))
     CompositionLocalProvider(LocalCall provides fp) {
@@ -154,7 +158,11 @@ fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, 
                         Text(ui.targetName, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1)
                         ui.linkMedium?.let { Text(it, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xBFFFFFFF), maxLines = 1) }
                     }
-                    Spacer(Modifier.size(44.dp))
+                    Box(
+                        Modifier.size(44.dp).clip(CircleShape).background(Color(if (haptic) 0x80FFFFFF else 0x30FFFFFF)).border(1.dp, Color(0x4DFFFFFF), CircleShape)
+                            .clickable { haptic = !haptic; prefs.edit().putBoolean("haptic_find", haptic).apply() },
+                        contentAlignment = Alignment.Center,
+                    ) { KIcon(KI.VIBRATE, if (haptic) Color(0xFF0B0B0F) else Color.White, 22.dp, stringResource(R.string.haptic_title) + ": " + stringResource(R.string.haptic_desc)) }
                 }
                 // A position heard in the last 30 s is a GPS reading, not a prediction: label it as such.
                 val fresh = (s.targetFixAgeMs ?: Long.MAX_VALUE) <= app.linkfill.core.find.FindResolver.TARGET_RECENT_MS
@@ -181,6 +189,32 @@ fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, 
                 FindGlassButton(stringResource(R.string.find_stop), KI.CLOSE, null, Modifier.weight(1f), onStop)
             }
             }
+        }
+    }
+}
+
+/**
+ * Vibration guide: feel the direction without looking. Pointing within 20 degrees of the person gives quick buzzes, within 60
+ * degrees a slow tick, otherwise nothing, so turning on the spot finds the strong pulse. Only while the arrow is trusted
+ * (a direction exists); with no direction it stays silent rather than guess.
+ */
+@Composable
+private fun HapticGuide(on: Boolean, arrowDeg: Double?) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val angle = androidx.compose.runtime.rememberUpdatedState(arrowDeg)
+    androidx.compose.runtime.LaunchedEffect(on) {
+        if (!on) return@LaunchedEffect
+        val vib = context.getSystemService(android.os.Vibrator::class.java) ?: return@LaunchedEffect
+        while (true) {
+            val a = angle.value?.let { kotlin.math.abs(app.linkfill.core.find.Angles.normalize180(it)) }
+            val (len, gap) = when {
+                a == null -> 0L to 300L
+                a < 20 -> 45L to 300L
+                a < 60 -> 25L to 1100L
+                else -> 0L to 300L
+            }
+            if (len > 0) try { vib.vibrate(android.os.VibrationEffect.createOneShot(len, if (a != null && a < 20) 255 else 120)) } catch (_: SecurityException) { }
+            kotlinx.coroutines.delay(len + gap)
         }
     }
 }

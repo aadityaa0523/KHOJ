@@ -41,6 +41,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.sp
@@ -520,7 +522,33 @@ fun SettingsTab(s: MeshUiState, mesh: MeshController, night: Boolean, onNight: (
         if (s.running) CallButton(stringResource(R.string.stop_khoj), mesh::stop, tone = Tone.QUIET)
         else CallButton(stringResource(R.string.turn_on), mesh::start, icon = KI.RADAR)
         NavRow(KI.SETTINGS, stringResource(R.string.advanced), onClick = onAdvanced)
+        MeshHealthRow(s)
     }
+}
+
+/** Quiet text row at the very bottom of Settings: live numbers from this phone's mesh, nothing invented. */
+@Composable
+private fun MeshHealthRow(s: MeshUiState) {
+    val p = LocalCall.current
+    var open by remember { mutableStateOf(false) }
+    Text(stringResource(R.string.health_title), fontSize = 13.sp, color = p.inkMuted, textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { open = true }.padding(top = 14.dp))
+    if (!open) return
+    val lines = buildList {
+        add("Mesh " + if (s.running) "on" else "off")
+        add("Phones heard now: ${s.neighbors.size}")
+        for (n in s.neighbors.take(8)) add("  ${Integer.toHexString(n.id).takeLast(4)}  ${n.rssi} dBm  delivery ${(n.pdr2s * 100).toInt()}% (last 2 s)")
+        add("Group members: ${s.members.size}")
+        for (m in s.members.take(8)) add("  ${m.name}: ${m.hops} hop(s), ${m.rssi} dBm, heard ${(s.now - m.heardAt) / 1000} s ago")
+        for (t in s.transports.filter { it.enabled }) add("${t.kind.name}: " + (if (t.up) "up" else "down") + ", peers ${t.peers}, sent ${t.sent}, received ${t.received}")
+        add(s.stats)
+    }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = { open = false },
+        title = { Text(stringResource(R.string.health_title)) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { for (l in lines) Text(l, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 12.sp, color = p.ink) } },
+        confirmButton = { androidx.compose.material3.TextButton({ open = false }, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.light_cancel)) } },
+    )
 }
 
 /** Who I am: big initial, name, and member/helper choice (police only after the official key is scanned). */

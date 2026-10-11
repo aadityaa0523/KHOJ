@@ -258,4 +258,8 @@
     <string name="simple_tap">tap to find</string>
     <string name="simple_far">far away</string>
     <string name="band_pass_label">KHOJ \u00b7 CHILD BAND</string>
+
+    <string name="haptic_title">Vibration guide</string>
+    <string name="haptic_desc">Feel which way to turn: quick buzzes when you face them</string>
+    <string name="health_title">Mesh health</string>
 </resources>

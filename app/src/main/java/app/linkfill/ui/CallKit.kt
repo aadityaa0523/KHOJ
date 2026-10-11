@@ -131,7 +131,7 @@ fun heatRim(): Brush { val p = LocalCall.current; return Brush.linearGradient(li
 // ------------------------------------------------------------------ icons
 
 /** Line icons drawn on a 24-unit grid, one stroke weight, so the app needs no icon library and no emoji. */
-enum class KI { RADAR, GROUP, HELP, SETTINGS, SUN, MOON, QR, SCAN, BAND, REWIND, PIN, BELL, CHEVRON, SHIELD, PLUS, GLOBE, BATTERY, WALK, CHECK, CLOSE, PHONE, SIREN, MIC, WARN, BOLT, SPEAKER }
+enum class KI { RADAR, GROUP, HELP, SETTINGS, SUN, MOON, QR, SCAN, BAND, REWIND, PIN, BELL, CHEVRON, SHIELD, PLUS, GLOBE, BATTERY, WALK, CHECK, CLOSE, PHONE, SIREN, MIC, WARN, BOLT, SPEAKER, VIBRATE }
 
 @Composable
 fun KIcon(kind: KI, tint: Color = LocalCall.current.ink, size: Dp = 24.dp, label: String? = null, modifier: Modifier = Modifier) {
@@ -169,6 +169,7 @@ fun KIcon(kind: KI, tint: Color = LocalCall.current.ink, size: Dp = 24.dp, label
             KI.PHONE -> path { moveTo(6.5f, 3f); lineTo(9.5f, 3.5f); lineTo(11f, 8f); lineTo(8.5f, 9.5f); cubicTo(9.5f, 12f, 12f, 14.5f, 14.5f, 15.5f); lineTo(16f, 13f); lineTo(20.5f, 14.5f); lineTo(21f, 17.5f); cubicTo(21f, 19.5f, 19.5f, 21f, 17.5f, 21f); cubicTo(9f, 20.5f, 3.5f, 15f, 3f, 6.5f); cubicTo(3f, 4.5f, 4.5f, 3f, 6.5f, 3f); close() }
             KI.MIC -> { line(9f, 6f, 9f, 11f); line(15f, 6f, 15f, 11f); arc(12f, 6f, 3f, 180f, 180f); arc(12f, 11f, 3f, 0f, 180f); arc(12f, 11f, 6.5f, 0f, 180f); line(12f, 17.5f, 12f, 21f) }
             KI.WARN -> { path { moveTo(12f, 3.5f); lineTo(21.5f, 20f); lineTo(2.5f, 20f); close() }; line(12f, 10f, 12f, 14.5f); line(12f, 17.2f, 12f, 17.5f) }
+            KI.VIBRATE -> { drawRoundRect(tint, o(8f, 3f), Size(8f * u, 18f * u), androidx.compose.ui.geometry.CornerRadius(2f * u), style = st); line(4.5f, 8f, 4.5f, 16f); line(19.5f, 8f, 19.5f, 16f); line(1.5f, 10f, 1.5f, 14f); line(22.5f, 10f, 22.5f, 14f) }
             KI.BOLT -> path { moveTo(13f, 2.5f); lineTo(4.5f, 14f); lineTo(11f, 14f); lineTo(10f, 21.5f); lineTo(19.5f, 10f); lineTo(13f, 10f); close() }
             KI.SPEAKER -> { path { moveTo(4f, 9.5f); lineTo(4f, 14.5f); lineTo(7.5f, 14.5f); lineTo(12.5f, 18.5f); lineTo(12.5f, 5.5f); lineTo(7.5f, 9.5f); close() }; arc(13f, 12f, 4f, -50f, 100f); arc(13f, 12f, 7.5f, -50f, 100f) }
             KI.SIREN -> { path { moveTo(6f, 18f); lineTo(6f, 12f); cubicTo(6f, 8.5f, 8.5f, 6f, 12f, 6f); cubicTo(15.5f, 6f, 18f, 8.5f, 18f, 12f); lineTo(18f, 18f) }; line(4f, 18.5f, 20f, 18.5f); line(12f, 2f, 12f, 3.5f); line(4f, 5f, 5f, 6f); line(20f, 5f, 19f, 6f) }

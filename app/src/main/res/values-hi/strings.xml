@@ -204,4 +204,7 @@
     <string name="tab_scan">स्कैन</string>
     <string name="tab_alerts">अलर्ट</string>
     <string name="band_pass_label">KHOJ · बच्चे का बैंड</string>
+    <string name="haptic_title">कंपन गाइड</string>
+    <string name="haptic_desc">सामने मुँह करने पर तेज़ कंपन, बिना देखे दिशा पता चलती है</string>
+    <string name="health_title">मेश की सेहत</string>
 </resources>
