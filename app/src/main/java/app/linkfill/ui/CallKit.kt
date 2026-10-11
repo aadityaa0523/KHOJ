@@ -202,12 +202,17 @@ fun CallPage(title: String?, onBack: (() -> Unit)?, actions: @Composable RowScop
  * A tab inside the main shell: no back arrow (the navigation bar is the way out), a large title, scrolling content.
  * The shell already paints the ground and handles the bottom insets.
  */
+/** SOS is one tap away from every tab: the shell provides what the pill on each page does. */
+val LocalOpenSos = androidx.compose.runtime.staticCompositionLocalOf<(() -> Unit)?> { null }
+
 @Composable
 fun TabPage(title: String, actions: @Composable RowScope.() -> Unit = {}, content: @Composable ColumnScope.() -> Unit) {
+    val openSos = LocalOpenSos.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(title, style = MaterialTheme.typography.headlineMedium, color = LocalCall.current.ink, modifier = Modifier.weight(1f))
             actions()
+            if (openSos != null) { Spacer(Modifier.width(8.dp)); SosPillButton(onClick = openSos) }
         }
         Rise { Column(verticalArrangement = Arrangement.spacedBy(14.dp), content = content) }
         Spacer(Modifier.height(16.dp))

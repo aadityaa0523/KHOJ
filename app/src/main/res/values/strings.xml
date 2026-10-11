@@ -130,7 +130,7 @@
 
 
     <!-- The Call redesign -->
-    <string name="tab_radar">Radar</string>
+    <string name="tab_radar">Nearby</string>
     <string name="tab_group">Group</string>
     <string name="tab_help">Help</string>
     <string name="tab_board">Board</string>
@@ -225,4 +225,16 @@
     <string name="voice_circle">Set circle to %1$d m</string>
     <string name="voice_saver_on">Turn battery saver on</string>
     <string name="voice_saver_off">Turn battery saver off</string>
+
+    <!-- Nearby (prototype v3) -->
+    <string name="nearby_group">My group</string>
+    <string name="nearby_count">%1$d nearby</string>
+    <string name="nearby_family">Family</string>
+    <string name="nearby_sort">Nearest first</string>
+    <string name="nearby_heard">Heard %1$s ago</string>
+    <string name="nearby_outside">Outside circle \u00b7 %1$s ago</string>
+    <string name="nearby_stale">Last seen %1$s ago</string>
+    <string name="nearby_last_seen">last seen</string>
+    <string name="mini_finding">Finding %1$s</string>
+    <string name="mini_open">Tap to open</string>
 </resources>

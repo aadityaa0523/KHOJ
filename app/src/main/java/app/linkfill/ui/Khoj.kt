@@ -60,6 +60,8 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import app.linkfill.find.FindUi
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -149,7 +151,7 @@ private val HELPER_TABS = listOf(Tab.BOARD, Tab.SCAN, Tab.ALERTS, Tab.SETTINGS)
 fun KhojApp(s: MeshUiState, mesh: MeshController, onAdvanced: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("mesh", Context.MODE_PRIVATE) }
-    var night by rememberSaveable { mutableStateOf(prefs.getBoolean("night", true)) }
+    var night by rememberSaveable { mutableStateOf(prefs.getBoolean("night", false)) }
     val setNight = { on: Boolean -> night = on; prefs.edit().putBoolean("night", on).apply() }
     CallTheme(night) {
         var splash by rememberSaveable { mutableStateOf(true) }
@@ -189,7 +191,7 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
         when (sub) {
             KSub.NONE -> tab = tabs.first()
             KSub.SHOW_BAND -> sub = KSub.BANDS
-            KSub.FIND -> { mesh.stopFind(); home() }
+            KSub.FIND -> home()
             KSub.SOS -> home()
             else -> home()
         }
@@ -198,7 +200,7 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
     val badCode = stringResource(R.string.bad_code)
     when (sub) {
         KSub.FIND -> FindScreen(findUi, onStop = { mesh.stopFind(); home() }, needRangingPermission = Build.VERSION.SDK_INT >= 36 && context.checkSelfPermission(Manifest.permission.RANGING) != PackageManager.PERMISSION_GRANTED,
-            onAllowRanging = { ranging.launch(Manifest.permission.RANGING) }, onTrustAngle = mesh::setTrustAngle, onGroundTruth = mesh::setGroundTruth,
+            onAllowRanging = { ranging.launch(Manifest.permission.RANGING) }, onTrustAngle = mesh::setTrustAngle, onGroundTruth = mesh::setGroundTruth, onBack = ::home,
             onLight = { m, d -> findUi?.let { f -> mesh.sendLight(f.targetId, m, d, f.targetName) } })
         KSub.SCAN_BAND -> ScanPage(stringResource(R.string.scan_band), scanMsg ?: stringResource(R.string.scan_hint), ::home) { text ->
             if (Band.parse(text) != null) { bandText = text; mesh.rewind.resume(); sub = KSub.FOUND_BAND } else scanMsg = notBand
@@ -211,9 +213,10 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
         KSub.REWIND -> RewindPage(s, mesh, ::home)
         KSub.BATTERY_GUIDANCE -> BatteryGuidancePage(s, ::home)
         KSub.SOS -> SosScreen(s, mesh, onDismiss = ::home)
-        KSub.NONE -> Shell(s, mesh, tabs, tab, { tab = it }, onOpenSos = { sub = KSub.SOS }) {
+        KSub.NONE -> Shell(s, mesh, tabs, tab, { tab = it }, onOpenSos = { sub = KSub.SOS }, findUi = findUi, onOpenFind = { sub = KSub.FIND }, onStopFind = { mesh.stopFind() }) {
             when (tab) {
-                Tab.RADAR -> RadarTab(s, mesh, night, setNight, onFind = ::startFinding, onRewind = { sub = KSub.REWIND }, onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE }, onSos = { sub = KSub.SOS },
+                Tab.RADAR -> NearbyScreen(s, mesh, findUi?.targetId, setNight, onFind = ::startFinding, onSos = { sub = KSub.SOS }, onRewind = { sub = KSub.REWIND },
+                    onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE },
                     onOpen = { t -> when (t) { app.linkfill.core.voice.VoiceTarget.GROUP -> tab = Tab.GROUP; app.linkfill.core.voice.VoiceTarget.SETTINGS -> tab = Tab.SETTINGS; app.linkfill.core.voice.VoiceTarget.BANDS -> sub = KSub.BANDS; app.linkfill.core.voice.VoiceTarget.REWIND -> sub = KSub.REWIND; app.linkfill.core.voice.VoiceTarget.RADAR -> tab = Tab.RADAR } })
                 Tab.GROUP -> GroupTab(s, mesh, onScanFamily = { scan(KSub.SCAN_FAMILY) })
                 Tab.HELP -> HelpTab(s, mesh, onScanBand = { scan(KSub.SCAN_BAND) }, onBands = { sub = KSub.BANDS }, onRewind = { sub = KSub.REWIND })
@@ -226,23 +229,23 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
     }
 }
 
-/** The frame every tab lives in: aurora ground, the tab, the SOS dock (always one reach away) and the navigation bar. */
+/** The frame every tab lives in: the ground, the tab, SOS status, a mini bar for a Find in progress, and the floating glass tab bar. */
 @Composable
-private fun Shell(s: MeshUiState, mesh: MeshController, tabs: List<Tab>, tab: Tab, onTab: (Tab) -> Unit, onOpenSos: () -> Unit = {}, content: @Composable () -> Unit) {
-    val p = LocalCall.current
-    CallBackground {
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
-            Box(Modifier.weight(1f)) { content() }
-            SosDock(s, mesh, onOpenSos)
-            NavigationBar(containerColor = p.glassStrong, tonalElevation = 0.dp) {
-                for (t in tabs) {
-                    val label = stringResource(t.label)
-                    NavigationBarItem(
-                        selected = t == tab, onClick = { onTab(t) },
-                        icon = { KIcon(t.icon, if (t == tab) p.ink else p.inkMuted, 24.dp) },
-                        label = { Text(label, fontWeight = if (t == tab) FontWeight.Bold else FontWeight.Medium) },
-                        colors = NavigationBarItemDefaults.colors(indicatorColor = p.violet.copy(alpha = 0.45f), selectedTextColor = p.ink, unselectedTextColor = p.inkMuted),
-                    )
+private fun Shell(
+    s: MeshUiState, mesh: MeshController, tabs: List<Tab>, tab: Tab, onTab: (Tab) -> Unit, onOpenSos: () -> Unit,
+    findUi: FindUi?, onOpenFind: () -> Unit, onStopFind: () -> Unit, content: @Composable () -> Unit,
+) {
+    CompositionLocalProvider(LocalOpenSos provides onOpenSos) {
+        CallBackground {
+            Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
+                Box(Modifier.weight(1f)) { content() }
+                Column(
+                    Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom)).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    SosStatus(s, mesh)
+                    findUi?.let { f -> FindMiniBar(f, s.members.indexOfFirst { it.originId == f.targetId }.coerceAtLeast(0), onOpenFind, onStopFind) }
+                    GlassTabBar(tabs.map { t -> GlassTab(t.icon, stringResource(t.label), t == tab) { onTab(t) } })
                 }
             }
         }
@@ -303,14 +306,6 @@ private fun AlarmBeat(alerts: List<HomeAlert>, content: @Composable () -> Unit) 
 
 // ------------------------------------------------------------------ radar tab (members)
 
-/** Outside the group circle, with both GPS errors allowed for (the same rule the alarm uses). */
-private fun warn(m: CrewMember, s: MeshUiState): Boolean {
-    val me = s.myFix ?: return false
-    if (!MeshController.hasPosition(m.lat, m.lon)) return false
-    val d = GapEstimator.distanceM(me.latitude, me.longitude, m.lat, m.lon)
-    return s.now - m.heardAt < 45_000 && d - me.accuracyM - m.accuracyM > s.circleM
-}
-
 @Composable
 private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onSos: () -> Unit = {}, onFind: (Int) -> Unit = {}, onOpen: (app.linkfill.core.voice.VoiceTarget) -> Unit = {}, modifier: Modifier = Modifier) {
     val p = LocalCall.current
@@ -337,108 +332,9 @@ private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, se
     }
 }
 
-@Composable
-private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onFind: (Int) -> Unit, onRewind: () -> Unit, onBatteryGuidance: () -> Unit = {}, onSos: () -> Unit = {}, onOpen: (app.linkfill.core.voice.VoiceTarget) -> Unit = {}) {
-    val p = LocalCall.current
-    val me = s.myFix
-    val heard = s.members.associate { it.originId.toLong() to it.heardAt }
-    val pts = s.members.map { m -> RadarPoint(m.originId.toLong(), m.name, m.lat, m.lon, s.now - m.heardAt >= 45_000, warn(m, s), "") }
-    val placed = if (me != null) place(pts, me.latitude, me.longitude).map { pl ->
-        pl.copy(point = pl.point.copy(label = if (pl.point.stale) stringResource(R.string.seen_ago, agoText(s.now - (heard[pl.point.id] ?: s.now)))
-            else "${pl.distanceM.roundToInt()} m"))
-    } else emptyList()
-    Column(Modifier.fillMaxSize()) {
-        RadarHeader(s, mesh, night, setNight, onSos, onFind, onOpen)
-        Spacer(Modifier.height(4.dp))
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (!s.batteryUnrestricted) {
-            Glass(rim = heatRim(), padding = PaddingValues(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    KIcon(KI.BATTERY, p.gold, 28.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.battery_guidance_title), style = MaterialTheme.typography.titleMedium, color = p.ink, fontWeight = FontWeight.Bold)
-                        Text(stringResource(R.string.battery_guidance_summary), style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-                CallButton(stringResource(R.string.battery_guidance_btn), onBatteryGuidance, icon = KI.SETTINGS, tone = Tone.HOT)
-            }
-        }
-        for (a in s.alerts) AlarmCard(a, s, onDismiss = { mesh.dismissAlert(a.key) }, onRewind = if (a.kind == "LOST" && s.rewindFrames > 0) onRewind else null)
-        for ((id, who) in s.seekers) Glass(rim = heatRim(), padding = PaddingValues(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                KIcon(KI.RADAR, p.gold, 28.dp); Spacer(Modifier.width(12.dp))
-                Text(stringResource(R.string.looking_for_you, who), style = MaterialTheme.typography.titleLarge, color = p.ink, modifier = Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(8.dp))
-            CallButton(stringResource(R.string.find_them, who), { onFind(id) }, icon = KI.WALK, tone = Tone.HOT)
-        }
-        s.beingFoundBy?.let { who ->
-            Glass(padding = PaddingValues(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    KIcon(KI.WALK, p.sky, 28.dp); Spacer(Modifier.width(12.dp))
-                    Text(stringResource(R.string.being_found_by, who), style = MaterialTheme.typography.titleMedium, color = p.ink, modifier = Modifier.weight(1f))
-                }
-                OutlinedButton(onClick = mesh::pauseBeingFound, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.pause_being_found)) }
-            }
-        }
-        Rise {
-            Glass(rim = heatRim(), padding = PaddingValues(14.dp)) {
-                GuideWords(placed, stringResource(R.string.nearest), stringResource(R.string.farthest))
-                CallRadar(placed, s.headingDeg, s.circleM, me != null, stringResource(R.string.find_note_my_loc_missing), stringResource(R.string.circle_ring, s.circleM), stringResource(R.string.you),
-                    onTap = { onFind(it.id.toInt()) }, modifier = Modifier.fillMaxWidth().height(330.dp))
-            }
-        }
-        if (s.members.isEmpty()) Text(stringResource(R.string.family_empty), style = MaterialTheme.typography.bodyLarge, color = p.inkMuted)
-        for ((i, m) in s.members.withIndex()) Rise(delayMs = 60 * (i + 1)) { MemberModule(m, s, placed.firstOrNull { it.point.id == m.originId.toLong() }) { onFind(m.originId) } }
-        s.meetPoint?.let { mp ->
-            val d = me?.let { GapEstimator.distanceM(it.latitude, it.longitude, mp.lat, mp.lon) }
-            val b = me?.let { GapEstimator.bearingDeg(it.latitude, it.longitude, mp.lat, mp.lon) }
-            Glass(padding = PaddingValues(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    KIcon(KI.PIN, p.gold, 28.dp); Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(stringResource(R.string.meet_point), style = MaterialTheme.typography.titleMedium, color = p.ink)
-                        Text("${mp.label} (${mp.from})" + if (d != null && b != null) " · ${d.roundToInt()} m${dirWord(b, s)}" else "", style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
-                    }
-                    if (b != null && s.headingDeg != null) MiniArrow((b - s.headingDeg).toFloat(), heat(p, d))
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        }
-    }
-}
-
-/** One person as a ruled module: heat disc, name, distance and direction in words, age, a mini arrow, and FIND. */
-@Composable
-private fun MemberModule(m: CrewMember, s: MeshUiState, pl: Placed?, onFind: () -> Unit) {
-    val p = LocalCall.current
-    val stale = s.now - m.heardAt >= 45_000
-    val w = warn(m, s)
-    val col = if (stale) p.stale else heat(p, pl?.distanceM)
-    val shape = RoundedCornerShape(18.dp)
-    Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(shape).background(p.glass).border(if (w) 2.dp else 1.dp, if (w) p.alarm else p.line, shape)
-        .clickable(onClick = onFind).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        HeatDisc(m.name, col, 44.dp, dashed = stale)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(m.name, style = MaterialTheme.typography.titleLarge, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val ago = stringResource(R.string.seen_ago, agoText(s.now - m.heardAt))
-            Text(if (pl != null) "${pl.distanceM.roundToInt()} m${dirWord(pl.bearingDeg, s)} · $ago" else ago,
-                style = MaterialTheme.typography.bodyMedium, color = p.inkMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (w) Text(stringResource(R.string.outside_circle), style = MaterialTheme.typography.labelLarge, color = if (p.night) Color(0xFFFF8A96) else p.alarm)
-            if (stale) Text(stringResource(R.string.lost_contact, m.name), style = MaterialTheme.typography.labelLarge, color = p.inkMuted)
-        }
-        if (pl != null && s.headingDeg != null) { MiniArrow((pl.bearingDeg - s.headingDeg).toFloat(), col); Spacer(Modifier.width(8.dp)) }
-        FilledTonalButton(onClick = onFind, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.find_button), fontWeight = FontWeight.ExtraBold) }
-    }
-}
-
 /** Small direction arrow in the person's heat colour, relative to where the phone faces. */
 @Composable
-private fun MiniArrow(angleDeg: Float, color: Color) {
+internal fun MiniArrow(angleDeg: Float, color: Color) {
     Canvas(Modifier.size(34.dp).semantics { contentDescription = "Direction ${angleDeg.roundToInt()} degrees" }) {
         rotate(angleDeg) {
             val w = size.width; val h = size.height
@@ -449,7 +345,7 @@ private fun MiniArrow(angleDeg: Float, color: Color) {
 
 /** Alarms are solid and calm: one colour per kind, a big title, the place, an arrow when it is known, a 48 dp close. */
 @Composable
-private fun AlarmCard(a: HomeAlert, s: MeshUiState, onDismiss: () -> Unit, onRewind: (() -> Unit)?) {
+internal fun AlarmCard(a: HomeAlert, s: MeshUiState, onDismiss: () -> Unit, onRewind: (() -> Unit)?) {
     val p = LocalCall.current
     val bg = when (a.kind) { "FOUND", "HELP" -> p.ok; "OFFICIAL" -> p.violet; else -> p.alarm }
     val fg = if (a.kind == "FOUND" || a.kind == "HELP") Color(0xFF032B1A) else Color.White

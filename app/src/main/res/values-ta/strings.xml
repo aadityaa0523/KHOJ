@@ -165,4 +165,16 @@
     <string name="voice_circle">வட்டத்தை %1$d மீ ஆக்கு</string>
     <string name="voice_saver_on">பேட்டரி சேமிப்பை இயக்கு</string>
     <string name="voice_saver_off">பேட்டரி சேமிப்பை நிறுத்து</string>
+
+    <!-- Nearby -->
+    <string name="nearby_group">என் குழு</string>
+    <string name="nearby_count">%1$d அருகில்</string>
+    <string name="nearby_family">குடும்பம்</string>
+    <string name="nearby_sort">அருகில் உள்ளவர் முதலில்</string>
+    <string name="nearby_heard">%1$s முன் கேட்டது</string>
+    <string name="nearby_outside">வட்டத்திற்கு வெளியே · %1$s முன்</string>
+    <string name="nearby_stale">கடைசியாக %1$s முன் பார்த்தது</string>
+    <string name="nearby_last_seen">கடைசியாக</string>
+    <string name="mini_finding">%1$s ஐத் தேடுகிறது</string>
+    <string name="mini_open">திறக்கத் தட்டவும்</string>
 </resources>

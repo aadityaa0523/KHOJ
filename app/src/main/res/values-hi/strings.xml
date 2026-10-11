@@ -165,4 +165,16 @@
     <string name="voice_circle">सर्कल %1$d मीटर करें</string>
     <string name="voice_saver_on">बैटरी बचत चालू करें</string>
     <string name="voice_saver_off">बैटरी बचत बंद करें</string>
+
+    <!-- Nearby -->
+    <string name="nearby_group">मेरा समूह</string>
+    <string name="nearby_count">%1$d पास में</string>
+    <string name="nearby_family">परिवार</string>
+    <string name="nearby_sort">सबसे पास पहले</string>
+    <string name="nearby_heard">%1$s पहले सुना</string>
+    <string name="nearby_outside">घेरे से बाहर · %1$s पहले</string>
+    <string name="nearby_stale">आखिरी बार %1$s पहले दिखे</string>
+    <string name="nearby_last_seen">आखिरी बार</string>
+    <string name="mini_finding">%1$s को खोज रहे हैं</string>
+    <string name="mini_open">खोलने के लिए दबाएँ</string>
 </resources>

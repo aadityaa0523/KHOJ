@@ -110,7 +110,7 @@ private fun fieldHeat(p: CallPalette, distanceM: Double?, prox: Proximity?): Col
  * it does know (distance, closeness, a last position) and says why the rest is withheld.
  */
 @Composable
-fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, onAllowRanging: () -> Unit, onTrustAngle: (Boolean) -> Unit, onGroundTruth: (Double?) -> Unit, onLight: (Int, Int) -> Unit = { _, _ -> }) {
+fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, onAllowRanging: () -> Unit, onTrustAngle: (Boolean) -> Unit, onGroundTruth: (Double?) -> Unit, onLight: (Int, Int) -> Unit = { _, _ -> }, onBack: () -> Unit = onStop) {
     val p = LocalCall.current
     var askLight by remember { mutableStateOf(false) }
     val speaker = rememberSpeaker()
@@ -132,7 +132,7 @@ fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, 
             if (hot != null) soundArcs(c, size.width * 0.75f, phase?.value ?: 0.4f, listOf(Color.White, field, field), count = 4, width = 3f)
         }
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            CallTopBar(stringResource(R.string.find_title, ui.targetName), onStop)
+            CallTopBar(stringResource(R.string.find_title, ui.targetName), onBack)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // A position heard in the last 30 s is a GPS reading, not a prediction: label it as such.
             val fresh = (s.targetFixAgeMs ?: Long.MAX_VALUE) <= app.linkfill.core.find.FindResolver.TARGET_RECENT_MS
