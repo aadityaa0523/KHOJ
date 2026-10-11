@@ -41,6 +41,16 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.shadow
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -287,13 +297,8 @@ fun GroupTab(s: MeshUiState, mesh: MeshController, onScanFamily: () -> Unit) {
     TabPage(stringResource(R.string.family_group)) {
         // (a) the group pass
         if (qr != null) {
-            Glass(Modifier.fillMaxWidth(), rim = heatRim()) {
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    QrPanel(qr, stringResource(R.string.family_show_qr))
-                    Text(stringResource(R.string.family_show_qr), style = MaterialTheme.typography.bodyLarge, color = p.inkMuted, textAlign = TextAlign.Center)
-                    s.crewCode?.let { Text(CrewKey.pretty(it), style = MaterialTheme.typography.headlineMedium, color = p.ink, textAlign = TextAlign.Center) }
-                }
-            }
+            FamilyPass(qr, s.crewCode, s)
+            Text(stringResource(R.string.family_show_qr), style = MaterialTheme.typography.bodyMedium, color = p.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         } else {
             CallButton(stringResource(R.string.family_create), { mesh.createCrew() }, icon = KI.PLUS)
             CallButton(stringResource(R.string.family_scan), onScanFamily, icon = KI.SCAN, tone = Tone.QUIET)
@@ -302,17 +307,7 @@ fun GroupTab(s: MeshUiState, mesh: MeshController, onScanFamily: () -> Unit) {
         // (b) the group circle picker
         SectionTitle(stringResource(R.string.circle_title))
         Text(stringResource(R.string.circle_desc), style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
-        Glass(Modifier.fillMaxWidth()) {
-            CirclePicker(s.circleM)
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (m in Circle.RADII_M) FilterChip(
-                    selected = s.circleM == m, onClick = { mesh.setCircle(m) },
-                    label = { Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { Text("$m m", maxLines = 1) } },
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                )
-            }
-        }
+        SegmentedControl(Circle.RADII_M, s.circleM, { mesh.setCircle(it) }, label = { "$it m" })
 
         // (b2) family may light up this phone
         SectionTitle(stringResource(R.string.light_section))
@@ -340,14 +335,14 @@ fun GroupTab(s: MeshUiState, mesh: MeshController, onScanFamily: () -> Unit) {
         // (d) members in detail
         SectionTitle(stringResource(R.string.my_family))
         if (s.members.isEmpty()) Text(stringResource(R.string.family_empty), style = MaterialTheme.typography.bodyLarge, color = p.inkMuted)
-        else Glass(Modifier.fillMaxWidth()) {
+        else InsetCard(padding = PaddingValues(horizontal = 14.dp)) {
             s.members.forEachIndexed { i, m ->
                 if (i > 0) Hairline()
                 val me = s.myFix
                 val dist = if (me != null && MeshController.hasPosition(m.lat, m.lon)) GapEstimator.distanceM(me.latitude, me.longitude, m.lat, m.lon) else null
                 val (where, angle) = whereText(s, m.lat, m.lon)
                 Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    HeatDisc(m.name, heat(p, dist), 44.dp, dashed = dist == null)
+                    MemberAvatar(m.name, colorIndex = i, size = 44.dp, stale = dist == null)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(m.name, style = MaterialTheme.typography.titleMedium, color = p.ink)
@@ -366,6 +361,37 @@ fun GroupTab(s: MeshUiState, mesh: MeshController, onScanFamily: () -> Unit) {
 
         // (e) join another group
         if (qr != null) NavRow(KI.SCAN, stringResource(R.string.family_scan), onClick = onScanFamily)
+    }
+}
+
+/** The family pass of prototype v3: a dark Wallet-style card with the join QR, the code, the members, and a slow sheen. */
+@Composable
+private fun FamilyPass(qr: String, code: String?, s: MeshUiState) {
+    val still = rememberReducedMotion()
+    val sheen = if (still) null else rememberInfiniteTransition(label = "sheen").animateFloat(-0.4f, 1.4f, infiniteRepeatable(tween(6000, easing = LinearEasing), RepeatMode.Restart), label = "s")
+    val shape = RoundedCornerShape(26.dp)
+    Box(
+        Modifier.fillMaxWidth().shadow(18.dp, shape, ambientColor = Color(0x59141E32), spotColor = Color(0x59141E32)).clip(shape)
+            .background(Brush.linearGradient(listOf(Color(0xFF26323A), Color(0xFF0F1519)), Offset.Zero, Offset(900f, 1100f))),
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Text(stringResource(R.string.pass_label), fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold, color = Color(0xA6FFFFFF))
+            Text(stringResource(R.string.nearby_group), fontSize = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.8).sp, color = Color.White, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(128.dp).clip(RoundedCornerShape(14.dp)).background(Color.White).padding(9.dp)) { QrImage(qr, stringResource(R.string.family_show_qr)) }
+                Spacer(Modifier.width(16.dp))
+                code?.let { Text(CrewKey.pretty(it).replace("-", "\n"), fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 16.sp, lineHeight = 24.sp, letterSpacing = 1.sp, color = Color.White) }
+            }
+            Row(Modifier.padding(top = 14.dp)) {
+                for ((i, m) in s.members.take(6).withIndex()) Box(Modifier.padding(start = if (i == 0) 0.dp else (-9).dp).border(2.dp, Color(0xFF1A2228), CircleShape)) {
+                    MemberAvatar(m.name, colorIndex = i, size = 30.dp)
+                }
+            }
+        }
+        if (sheen != null) Canvas(Modifier.matchParentSize()) {
+            val x = size.width * sheen.value
+            drawRect(Brush.linearGradient(listOf(Color.Transparent, Color(0x17FFFFFF), Color.Transparent), Offset(x - 160f, 0f), Offset(x + 160f, size.height * 0.4f)))
+        }
     }
 }
 

@@ -190,4 +190,5 @@
     <string name="activity_empty">अभी कुछ नहीं। संदेश, अलर्ट और मिलने की जगह यहाँ दिखेंगे।</string>
     <string name="activity_hint">संदेश</string>
     <string name="activity_send">भेजें</string>
+    <string name="pass_label">KHOJ · परिवार पास</string>
 </resources>

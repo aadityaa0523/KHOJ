@@ -250,4 +250,5 @@
     <string name="activity_empty">Nothing yet. Messages, alerts and meeting points will show here.</string>
     <string name="activity_hint">Message</string>
     <string name="activity_send">Send</string>
+    <string name="pass_label">KHOJ \u00b7 FAMILY PASS</string>
 </resources>
