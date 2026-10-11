@@ -187,13 +187,18 @@ class FindTest {
     }
 
     @Test fun silentTargetGetsAnArrowToItsPredictedPositionWithAWideningWedge() {
-        val s = FindResolver.resolve(inputs(tgt = target(200.0, age = 35_000)))
-        assertEquals(FindMode.PREDICTED, s.mode); assertEquals(Source.PREDICTED, s.arrowSource)
-        assertEquals(0.0, s.arrowDeg!!, 1.0); assertEquals(Freshness.STALE, s.targetFreshness)
-        assertTrue(Note.TARGET_POSITION_OLD in s.notes)
-        val longer = FindResolver.resolve(inputs(tgt = target(200.0, age = 65_000)))
+        // 11 s of silence: a prediction, still a GPS reading less than 20 s old.
+        assertEquals("a position heard 5 s ago is used as it is", FindMode.LOCATION_BEARING, FindResolver.resolve(inputs(tgt = target(200.0, age = 5_000))).mode)
+        val s = FindResolver.resolve(inputs(tgt = target(200.0, age = 11_000)))
+        assertEquals("10 to 20 s old is predicted", FindMode.PREDICTED, s.mode); assertEquals(Source.PREDICTED, s.arrowSource)
+        assertEquals(0.0, s.arrowDeg!!, 1.0)
+        val longer = FindResolver.resolve(inputs(tgt = target(200.0, age = 19_000)))
         assertTrue("longer silence, wider wedge", longer.arrowUncertaintyDeg!! > s.arrowUncertaintyDeg!!)
-        assertEquals("stops when uncertainty exceeds 30m", FindMode.UNAVAILABLE, FindResolver.resolve(inputs(tgt = target(200.0, age = 90_000))).mode)
+        // More than 20 s late: no prediction and no arrow from the old position.
+        val late = FindResolver.resolve(inputs(tgt = target(200.0, age = 21_000)))
+        assertEquals("a gap over 20 s means we stop guessing", FindMode.UNAVAILABLE, late.mode)
+        assertNull(late.arrowDeg); assertNull(late.distanceM)
+        assertTrue(Note.TARGET_POSITION_OLD in late.notes)
         assertEquals("too old to predict", FindMode.UNAVAILABLE, FindResolver.resolve(inputs(tgt = target(200.0, age = 11 * 60_000L))).mode)
     }
 
@@ -285,40 +290,36 @@ class FindTest {
         val p = app.linkfill.core.find.Predict.position(track, t0)!!
         assertEquals(30.0, app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, p.lat, p.lon), 0.5) // 10 s more at 1 m/s
         assertEquals(6.5, p.accuracyM, 0.1) // Age-aware uncertainty: sqrt(3^2 + 10^2*0.4^2 + 10^2*0.35^2 + 0.5*10) = 6.5 m
-        // At 120 s elapsed, uncertainty exceeds 30 m so position returns null
-        assertNull(app.linkfill.core.find.Predict.position(track, t0 + 120_000))
-        // With unbounded uncertainty threshold, coasts at most 30 s
-        val far = app.linkfill.core.find.Predict.position(track, t0 + 120_000, maxUncertaintyM = Double.MAX_VALUE)!!
-        assertEquals("coasts at most 30 s", 50.0, app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, far.lat, far.lon), 0.5)
+        // The newest fix is 20.001 s old: over the 20 s gap rule, so no prediction, even with an unbounded uncertainty threshold.
+        assertNull(app.linkfill.core.find.Predict.position(track, t0 + 10_001))
+        assertNull(app.linkfill.core.find.Predict.position(track, t0 + 120_000, maxUncertaintyM = Double.MAX_VALUE))
+        // Exactly at the limit it still predicts, coasting 20 s at 1 m/s from the last fix.
+        val edge = app.linkfill.core.find.Predict.position(track, t0 + 10_000)!!
+        assertEquals("coasts at most 20 s", 40.0, app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, edge.lat, edge.lon), 0.5)
         val jitter = listOf(LocFix(la1, lo1, 8.0, t0 - 30_000), LocFix(la1 + 1e-5, lo1, 8.0, t0 - 10_000)) // 1 m of GPS noise
         assertEquals(1.1, app.linkfill.core.estimate.GapEstimator.distanceM(17.0, 78.0, app.linkfill.core.find.Predict.position(jitter, t0)!!.lat, lo1), 0.2)
     }
 
     @Test fun wedgeGrowsWithFixAge() {
-        val s35 = FindResolver.resolve(inputs(tgt = target(200.0, age = 35_000)))
-        val s50 = FindResolver.resolve(inputs(tgt = target(200.0, age = 50_000)))
-        val s65 = FindResolver.resolve(inputs(tgt = target(200.0, age = 65_000)))
-        assertEquals(FindMode.PREDICTED, s35.mode)
-        assertEquals(FindMode.PREDICTED, s50.mode)
-        val u35 = s35.arrowUncertaintyDeg!!
-        val u50 = s50.arrowUncertaintyDeg!!
-        val u65 = s65.arrowUncertaintyDeg!!
-        assertTrue("Wedge widens between 35s and 50s", u50 > u35)
-        assertTrue("Wedge widens between 50s and 65s", u65 > u50)
+        val s5 = FindResolver.resolve(inputs(tgt = target(200.0, age = 5_000)))
+        val s12 = FindResolver.resolve(inputs(tgt = target(200.0, age = 12_000)))
+        val s19 = FindResolver.resolve(inputs(tgt = target(200.0, age = 19_000)))
+        val u5 = s5.arrowUncertaintyDeg!!
+        val u12 = s12.arrowUncertaintyDeg!!
+        val u19 = s19.arrowUncertaintyDeg!!
+        assertTrue("Wedge widens between 5 s and 12 s", u12 > u5)
+        assertTrue("Wedge widens between 12 s and 19 s", u19 > u12)
+        assertEquals("Past 20 s there is no arrow at all", FindMode.UNAVAILABLE, FindResolver.resolve(inputs(tgt = target(200.0, age = 21_000))).mode)
     }
 
     @Test fun predictionStopsBeyond30mUncertainty() {
-        // Fix with 5 m accuracy: at age 85 s, sigma is ~35 m (> 30 m)
-        val s85 = FindResolver.resolve(inputs(tgt = target(200.0, age = 85_000)))
-        assertEquals("Prediction stops when uncertainty exceeds 30m", FindMode.UNAVAILABLE, s85.mode)
-        assertNull(s85.arrowDeg)
-
-        // Directly verify Predict.position returns null when uncertainty > 30m
-        val track = listOf(LocFix(17.0, 78.0, 5.0, t0 - 85_000))
+        // A very inaccurate fix (30 m) gives a prediction uncertainty above 30 m even inside the 20 s window.
+        val track = listOf(LocFix(17.0, 78.0, 30.0, t0 - 5_000))
         assertNull(app.linkfill.core.find.Predict.position(track, t0))
-        // But with maxUncertaintyM = 40.0, it is non-null
-        val posWithHigherThreshold = app.linkfill.core.find.Predict.position(track, t0, maxUncertaintyM = 40.0)
-        assertTrue(posWithHigherThreshold != null)
+        // But with maxUncertaintyM = 40.0 it is non-null
+        assertTrue(app.linkfill.core.find.Predict.position(track, t0, maxUncertaintyM = 40.0) != null)
+        // And a good fix older than 20 s is refused by the gap rule whatever its accuracy.
+        assertNull(app.linkfill.core.find.Predict.position(listOf(LocFix(17.0, 78.0, 3.0, t0 - 21_000)), t0))
     }
 
     @Test fun motionClassLimitsApply() {

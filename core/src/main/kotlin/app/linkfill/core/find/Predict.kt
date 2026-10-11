@@ -25,7 +25,9 @@ enum class MotionClass(val maxSpeedMps: Double, val sigmaV: Double, val sigmaThe
 
 /**
  * Where someone probably is now, when their positions stopped arriving (out of range, or packets missed):
- * recent walking velocity carried forward from the last fix for up to [COAST_S] (people stop and turn).
+ * recent walking velocity carried forward from the last fix for at most [MAX_GAP_S] (people stop and turn).
+ * If the newest fix is more than [MAX_GAP_S] (20 s) old there is NO prediction at all: the caller falls back to Bluetooth
+ * closeness or says the position is old. A guess from a minute-old fix is worse than saying "I don't know".
  *
  * Age-aware uncertainty grows following the research model (Research A section F):
  *   sigma^2(t) = sigma^2_GNSS + t^2 * sigma^2_v + (v * t)^2 * sigma^2_theta + q_motion * t
@@ -36,7 +38,9 @@ enum class MotionClass(val maxSpeedMps: Double, val sigmaV: Double, val sigmaThe
 object Predict {
     const val MAX_SPEED_MPS = 1.8
     const val MAX_UNCERTAINTY_M = 30.0
-    const val COAST_S = 30.0
+    /** No prediction when the newest fix is older than this (the gap rule: a late update means we stop guessing). */
+    const val MAX_GAP_S = 20.0
+    const val COAST_S = MAX_GAP_S
     /** Fixes older than this before the newest one do not inform the velocity. */
     const val TRACK_S = 60.0
     /** Process noise rate for unobserved turns and stops (m^2 / s). */
@@ -47,9 +51,11 @@ object Predict {
         now: Long,
         motionClass: MotionClass = MotionClass.WALKING,
         maxUncertaintyM: Double = MAX_UNCERTAINTY_M,
+        maxGapS: Double = MAX_GAP_S,
     ): LocFix? {
         val last = track.maxByOrNull { it.atMs } ?: return null
         val dt = ((now - last.atMs) / 1000.0).coerceAtLeast(0.0)
+        if (dt > maxGapS) return null
         // Velocity from the oldest fix in the window that is at least 5 s older than the newest.
         val first = track.filter { (last.atMs - it.atMs) / 1000.0 in 5.0..TRACK_S }.minByOrNull { it.atMs }
         var vE = 0.0; var vN = 0.0; var speed = 0.0

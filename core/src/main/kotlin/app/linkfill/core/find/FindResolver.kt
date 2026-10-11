@@ -110,14 +110,15 @@ data class FindState(
 object FindResolver {
     const val RANGING_FRESH_MS = 3_000L
     const val TARGET_LIVE_MS = 10_000L
-    const val TARGET_RECENT_MS = 30_000L
+    /** A position older than this is treated as old: no arrow from it and no prediction (see Predict.MAX_GAP_S). */
+    const val TARGET_RECENT_MS = 20_000L
     const val ME_FRESH_MS = 10_000L
     const val HEADING_FRESH_MS = 2_000L
     const val MAX_ARROW_UNCERTAINTY_DEG = 45.0
     /** GPS and predicted arrows may be wider: the wedge drawn around the arrow shows exactly how unsure it is. */
     const val MAX_WIDE_ARROW_DEG = 90.0
     /** Positions older than this are not used even for a prediction. */
-    const val PREDICT_MAX_MS = 10 * 60_000L
+    const val PREDICT_MAX_MS = 20_000L
     /** Wedge for the warmer/colder arrow: it says ahead or behind, not an exact bearing. */
     const val TREND_ARROW_DEG = 60.0
     const val MAX_HEADING_UNCERTAINTY_DEG = 40.0
@@ -142,7 +143,7 @@ object FindResolver {
         val p = Predict.position(i.targetTrack.ifEmpty { listOf(t) }, i.now, i.motionClass) ?: return s
         val unc = (Bearing.uncertaintyDeg(Bearing.distanceM(me, p), me.accuracyM, p.accuracyM) + h.uncertaintyDeg).coerceAtMost(180.0)
         return s.copy(arrowDeg = Angles.relative(Bearing.trueBearing(me, p), h.trueDeg), arrowUncertaintyDeg = unc,
-            arrowSource = if (i.now - t.atMs <= TARGET_RECENT_MS) Source.GPS else Source.PREDICTED)
+            arrowSource = if (i.now - t.atMs <= TARGET_LIVE_MS) Source.GPS else Source.PREDICTED)
     }
 
     private fun resolveBest(i: FindInputs): FindState {
@@ -168,7 +169,8 @@ object FindResolver {
             gpsDistance = Bearing.distanceM(me, tFix)
             gpsUncertaintyM = kotlin.math.sqrt(me.accuracyM * me.accuracyM + tFix.accuracyM * tFix.accuracyM)
             val unc = Bearing.uncertaintyDeg(gpsDistance, me.accuracyM, tFix.accuracyM)
-            val live = freshness == Freshness.LIVE || freshness == Freshness.RECENT
+            // Only a position heard in the last 10 s is used as it is; 10 to 20 s old is predicted forward (widening wedge); older is not used.
+            val live = freshness == Freshness.LIVE
             if (!live) notes += Note.TARGET_POSITION_OLD
             when {
                 !live -> Unit
