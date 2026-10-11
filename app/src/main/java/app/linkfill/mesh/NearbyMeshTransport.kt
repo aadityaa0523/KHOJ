@@ -43,6 +43,9 @@ class NearbyMeshTransport(
     private val outgoing = HashSet<Long>()
     /** endpointId -> the other phone's advertised name, "khoj-<hex node id>", learned when the connection is initiated. */
     private val names = HashMap<String, String>()
+    /** Phones heard while discovering (endpointId to their advertised name), kept so an isolated phone can dial one of them. */
+    private val seen = LinkedHashMap<String, String>()
+    private var discoveringSinceMs = 0L
     private var running = false
 
     private val payloads = object : PayloadCallback() {
@@ -83,13 +86,14 @@ class NearbyMeshTransport(
 
     private val discovery = object : EndpointDiscoveryCallback() {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
+            seen[endpointId] = info.endpointName
             // Only the phone with the smaller name dials, so two phones never open two connections to each other.
             if (!running || nodeName >= info.endpointName || endpointId in connected || connected.size + pending.size >= MAX_LINKS) return
             if (!pending.add(endpointId)) return
             client.requestConnection(nodeName, endpointId, lifecycle).addOnFailureListener { pending.remove(endpointId) }
         }
 
-        override fun onEndpointLost(endpointId: String) { pending.remove(endpointId) }
+        override fun onEndpointLost(endpointId: String) { pending.remove(endpointId); seen.remove(endpointId) }
     }
 
     fun start() {
@@ -117,6 +121,20 @@ class NearbyMeshTransport(
                 .addOnSuccessListener { ok() }.addOnFailureListener { advertising = false; fail("advertising", it) }
         }
         discover()
+        dialIfAlone()
+    }
+
+    /**
+     * The "smaller name dials" rule stops two phones opening two links to each other, but it leaves a phone out when every
+     * phone it can see has a smaller name and is already connected (and so no longer discovering). A phone that has been
+     * discovering for 20 s with no link at all therefore dials whoever it has seen, whatever their name.
+     */
+    private fun dialIfAlone() {
+        if (!running || !discovering || connected.isNotEmpty() || pending.isNotEmpty()) return
+        if (android.os.SystemClock.elapsedRealtime() - discoveringSinceMs < ALONE_AFTER_MS) return
+        val ep = seen.keys.firstOrNull { it !in connected } ?: return
+        pending += ep
+        client.requestConnection(nodeName, ep, lifecycle).addOnFailureListener { pending.remove(ep) }
     }
 
     private fun ok() { if (failures > 0) { failures = 0; onRecovered() } }
@@ -139,6 +157,7 @@ class NearbyMeshTransport(
         val want = running && connected.isEmpty()
         if (want == discovering) return
         discovering = want
+        if (want) { discoveringSinceMs = android.os.SystemClock.elapsedRealtime(); seen.clear() }
         if (want) client.startDiscovery(SERVICE, discovery, DiscoveryOptions.Builder().setStrategy(Strategy.P2P_CLUSTER).build())
             .addOnSuccessListener { ok() }.addOnFailureListener { discovering = false; fail("discovery", it) }
         else client.stopDiscovery()
@@ -184,5 +203,6 @@ class NearbyMeshTransport(
         fun nameFor(nodeId: Int) = "khoj-" + Integer.toHexString(nodeId)
         const val SERVICE = "app.linkfill.mesh.v1"
         const val MAX_LINKS = 4
+        const val ALONE_AFTER_MS = 20_000L
     }
 }
