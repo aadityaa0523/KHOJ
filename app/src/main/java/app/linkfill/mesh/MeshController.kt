@@ -231,6 +231,18 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     private var labeler: LinkLabeler? = null
     private var loop: Job? = null
     private val members = LinkedHashMap<Int, CrewMember>()
+    /**
+     * Node ids this phone used in earlier runs (a fresh id per run keeps the nonces unique). Other phones keep relaying our
+     * last beacons for a while, so without this our own old id came back and we showed up as a member of our own family.
+     */
+    private val myPastIds: MutableSet<Int> = (prefs.getString("my_ids", "") ?: "").split(',').mapNotNull { it.toIntOrNull() }.toMutableSet()
+
+    private fun rememberMyId(id: Int) {
+        val ids = ((prefs.getString("my_ids", "") ?: "").split(',').mapNotNull { it.toIntOrNull() } + id).takeLast(MY_IDS_KEPT)
+        myPastIds += id
+        prefs.edit().putString("my_ids", ids.joinToString(",")).apply()
+        members.keys.removeAll(myPastIds)
+    }
     private val lostNotified = mutableSetOf<Int>()
     private val outsideCircle = mutableSetOf<Int>()
     /** node id of someone looking for me -> when their latest LOOKING arrived. */
@@ -453,6 +465,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         // the 1 s dwell. Risk falls back to 1 - pdr(2 s) until it is retrained on link_log.csv rows from this build.
         val r = MeshRouter(id, crew, MeshConfig(codedSupported = radio.codedSupported), random, this, predictor = null)
         router = r
+        rememberMyId(id)
         startedAt = System.currentTimeMillis()
         labeler = LinkLabeler(r.links)
         val myKey = crew
@@ -791,6 +804,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
     }
 
     override fun onMessage(originId: Int, message: MeshMessage, hops: Int, rssi: Int, ageS: Long) {
+        if (originId in myPastIds) return // our own message from an earlier run, relayed back to us
         val now = System.currentTimeMillis()
         val name = members[originId]?.name ?: "Crew ${Integer.toHexString(originId).takeLast(4)}"
         when (message) {
@@ -1071,6 +1085,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         /** Shown on the mesh screen; see the comment where the router is created. LinkAi stays in the app for the retrained model. */
         private const val LINK_AI_PAUSED = "Link AI paused (model predates the 1 s dwell); using 1 - delivery ratio over 2 s"
         private const val ALERTS = "alerts"
+        private const val MY_IDS_KEPT = 30
         private val SOS_PATTERN = longArrayOf(0, 600, 200, 600, 200, 600)
         private val LEFT_PATTERN = longArrayOf(0, 400, 150, 400, 150, 400, 150, 400)
         /** Senders use 0,0 for "no position yet". */
