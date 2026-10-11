@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,9 +31,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.linkfill.R
+import app.linkfill.core.estimate.GapEstimator
 import app.linkfill.core.mesh.MeshMessage
 import app.linkfill.core.voice.VoiceIntent
 import app.linkfill.core.voice.VoiceIntentParser
+import app.linkfill.core.voice.VoiceTarget
 import app.linkfill.mesh.MeshController
 import app.linkfill.mesh.MeshUiState
 import java.util.Locale
@@ -84,13 +87,19 @@ fun spokenFind(name: String, distanceM: Double?, arrowDeg: Double?): String {
 private enum class VStage { CHOOSE, LISTEN, HEARD, ERROR }
 
 /**
- * Hold-to-talk replacement: two choices, "say a command" (find someone, SOS) and "say a message" (sent to the group as
- * text). Recognition is the phone's own and prefers offline; it needs the microphone permission, asked only here.
- * Nothing is done until the user taps the confirm button, and SOS only opens the normal SOS countdown.
+ * The voice assistant. Two choices: "say a command" and "say a message" (sent to the group as text). Recognition is the
+ * phone's own and prefers offline; it needs the microphone permission, asked only here. What was said is read by
+ * [VoiceIntentParser] on the phone. Questions (where is X, who is near, battery, what can I say) are answered aloud and
+ * on screen; opening a screen and the day or night look happen at once; anything that sends something, lights a phone,
+ * changes a setting or starts SOS waits for a tap on the confirm button.
  */
 @Composable
-fun VoiceDialog(s: MeshUiState, mesh: MeshController, onFind: (Int) -> Unit, onSos: () -> Unit, onDismiss: () -> Unit) {
+fun VoiceDialog(
+    s: MeshUiState, mesh: MeshController, setNight: (Boolean) -> Unit,
+    onFind: (Int) -> Unit, onSos: () -> Unit, onOpen: (VoiceTarget) -> Unit, onDismiss: () -> Unit,
+) {
     val context = LocalContext.current
+    val speaker = rememberSpeaker()
     var stage by remember { mutableStateOf(VStage.CHOOSE) }
     var message by remember { mutableStateOf(false) }
     var heard by remember { mutableStateOf("") }
@@ -131,9 +140,42 @@ fun VoiceDialog(s: MeshUiState, mesh: MeshController, onFind: (Int) -> Unit, onS
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) listen(asMessage) else mic.launch(Manifest.permission.RECORD_AUDIO)
     }
 
-    // What the command means, worked out on the phone (see VoiceIntentParser).
-    val intent = if (!message && heard.isNotBlank()) VoiceIntentParser.parse(heard, s.members.map { it.name }) else VoiceIntent.Unknown
-    val member = when (intent) { is VoiceIntent.Find -> s.members.getOrNull(intent.member); is VoiceIntent.Light -> intent.member?.let { s.members.getOrNull(it) }; else -> null }
+    val intent = if (stage == VStage.HEARD && !message) VoiceIntentParser.parse(heard, s.members.map { it.name }) else VoiceIntent.Unknown
+    fun memberOf(i: Int?) = i?.let { s.members.getOrNull(it) }
+    val live = s.members.filter { s.now - it.heardAt < 45_000 }
+    val me = s.myFix
+
+    // Spoken answers: built here (they need string resources), spoken once in the effect below.
+    val answer: String? = when (intent) {
+        is VoiceIntent.Where -> memberOf(intent.member)?.let { m ->
+            if (me == null || !MeshController.hasPosition(m.lat, m.lon)) stringResource(R.string.voice_where_unknown, m.name)
+            else {
+                val d = GapEstimator.distanceM(me.latitude, me.longitude, m.lat, m.lon)
+                val b = GapEstimator.bearingDeg(me.latitude, me.longitude, m.lat, m.lon)
+                spokenFind(m.name, d, s.headingDeg?.let { b - it })
+            }
+        }
+        is VoiceIntent.WhoNear ->
+            if (live.isEmpty()) stringResource(R.string.voice_who_none)
+            else stringResource(R.string.voice_who_intro, live.joinToString(", ") { m ->
+                if (me != null && MeshController.hasPosition(m.lat, m.lon)) context.getString(R.string.voice_who_item, m.name, (GapEstimator.distanceM(me.latitude, me.longitude, m.lat, m.lon) / 0.7).roundToInt())
+                else m.name
+            })
+        is VoiceIntent.Battery -> memberOf(intent.member)?.let { stringResource(R.string.voice_battery, it.name, it.battery) }
+        is VoiceIntent.HelpMe -> stringResource(R.string.voice_help_text)
+        else -> null
+    }
+    LaunchedEffect(stage, heard) {
+        if (stage != VStage.HEARD || message) return@LaunchedEffect
+        when (val i = intent) {
+            is VoiceIntent.Open -> { onDismiss(); onOpen(i.target) }
+            is VoiceIntent.NightMode -> { setNight(i.on); onDismiss() }
+            is VoiceIntent.StopLight -> { mesh.stopLight(); onDismiss() }
+            else -> answer?.let { speaker.say(it) }
+        }
+    }
+    val unknown = !message && intent == VoiceIntent.Unknown
+    val both = MeshMessage.LIGHT_TORCH or MeshMessage.LIGHT_SCREEN
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -149,24 +191,32 @@ fun VoiceDialog(s: MeshUiState, mesh: MeshController, onFind: (Int) -> Unit, onS
                     VStage.LISTEN -> Text(stringResource(R.string.voice_listening), style = MaterialTheme.typography.headlineSmall)
                     VStage.HEARD -> {
                         Text("“$heard”", style = MaterialTheme.typography.headlineSmall)
-                        if (!message && intent == VoiceIntent.Unknown) Text(stringResource(R.string.voice_not_understood), style = MaterialTheme.typography.bodyMedium)
-                        else Text(stringResource(R.string.voice_confirm_note), style = MaterialTheme.typography.bodyMedium)
+                        when {
+                            answer != null -> Text(answer, style = MaterialTheme.typography.bodyLarge)
+                            unknown -> Text(stringResource(R.string.voice_not_understood), style = MaterialTheme.typography.bodyMedium)
+                            else -> Text(stringResource(R.string.voice_confirm_note), style = MaterialTheme.typography.bodyMedium)
+                        }
                     }
                     VStage.ERROR -> Text(stringResource(R.string.voice_error), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },
         confirmButton = {
-            when {
-                stage == VStage.HEARD && message -> TextButton({ mesh.sendText(heard); onDismiss() }) { Text(stringResource(R.string.voice_send)) }
-                stage == VStage.HEARD && intent == VoiceIntent.Sos -> TextButton({ onDismiss(); onSos() }) { Text(stringResource(R.string.voice_open_sos)) }
-                stage == VStage.HEARD && intent is VoiceIntent.Find && member != null -> TextButton({ onDismiss(); onFind(member.originId) }) { Text(stringResource(R.string.voice_find, member.name)) }
-                stage == VStage.HEARD && intent is VoiceIntent.Light && member != null ->
-                    TextButton({ mesh.sendLight(member.originId, MeshMessage.LIGHT_TORCH or MeshMessage.LIGHT_SCREEN, 60, member.name); onDismiss() }) { Text(stringResource(R.string.light_send, member.name)) }
-                stage == VStage.HEARD && intent is VoiceIntent.Light ->
-                    TextButton({ mesh.lightSelf(MeshMessage.LIGHT_TORCH or MeshMessage.LIGHT_SCREEN, 60); onDismiss() }) { Text(stringResource(R.string.light_self_button)) }
-                stage == VStage.HEARD || stage == VStage.ERROR -> TextButton({ stage = VStage.CHOOSE }) { Text(stringResource(R.string.voice_again)) }
-            }
+            if (stage == VStage.HEARD) when {
+                message -> TextButton({ mesh.sendText(heard); onDismiss() }) { Text(stringResource(R.string.voice_send)) }
+                answer != null -> TextButton({ speaker.say(answer) }) { Text(stringResource(R.string.voice_speak)) }
+                intent is VoiceIntent.Sos -> TextButton({ onDismiss(); onSos() }) { Text(stringResource(R.string.voice_open_sos)) }
+                intent is VoiceIntent.Find -> memberOf(intent.member)?.let { m -> TextButton({ onDismiss(); onFind(m.originId) }) { Text(stringResource(R.string.voice_find, m.name)) } }
+                intent is VoiceIntent.Light -> {
+                    val m = memberOf(intent.member)
+                    if (m != null) TextButton({ mesh.sendLight(m.originId, both, 60, m.name); onDismiss() }) { Text(stringResource(R.string.light_send, m.name)) }
+                    else TextButton({ mesh.lightSelf(both, 60); onDismiss() }) { Text(stringResource(R.string.light_self_button)) }
+                }
+                intent is VoiceIntent.Message -> TextButton({ mesh.sendText(intent.text); onDismiss() }) { Text(stringResource(R.string.voice_send)) }
+                intent is VoiceIntent.Circle -> TextButton({ mesh.setCircle(intent.metres); onDismiss() }) { Text(stringResource(R.string.voice_circle, intent.metres)) }
+                intent is VoiceIntent.BatterySaver -> TextButton({ mesh.setBatterySaver(intent.on); onDismiss() }) { Text(stringResource(if (intent.on) R.string.voice_saver_on else R.string.voice_saver_off)) }
+                else -> TextButton({ stage = VStage.CHOOSE }) { Text(stringResource(R.string.voice_again)) }
+            } else if (stage == VStage.ERROR) TextButton({ stage = VStage.CHOOSE }) { Text(stringResource(R.string.voice_again)) }
         },
         dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.light_cancel)) } },
     )

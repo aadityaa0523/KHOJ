@@ -154,4 +154,15 @@
     <string name="voice_left">%1$s आपकी बाईं ओर हैं, लगभग %2$d कदम।</string>
     <string name="voice_right">%1$s आपकी दाईं ओर हैं, लगभग %2$d कदम।</string>
     <string name="voice_mic">आवाज़</string>
+
+    <!-- Voice assistant -->
+    <string name="voice_where_unknown">%1$s कहाँ हैं, यह अभी पता नहीं।</string>
+    <string name="voice_who_none">अभी कोई पास में नहीं है।</string>
+    <string name="voice_who_intro">पास में: %1$s।</string>
+    <string name="voice_who_item">%1$s, %2$d कदम</string>
+    <string name="voice_battery">%1$s की बैटरी %2$d प्रतिशत है।</string>
+    <string name="voice_help_text">आप कह सकते हैं: गोपी को खोजो। गोपी कहाँ है। गोपी का फ़ोन चमकाओ। मेरा फ़ोन चमकाओ। पास में कौन है। ग्रुप खोलो। सर्कल 50 करो। नाइट मोड। बैटरी सेवर। संदेश, फिर आपका संदेश। या SOS।</string>
+    <string name="voice_circle">सर्कल %1$d मीटर करें</string>
+    <string name="voice_saver_on">बैटरी बचत चालू करें</string>
+    <string name="voice_saver_off">बैटरी बचत बंद करें</string>
 </resources>

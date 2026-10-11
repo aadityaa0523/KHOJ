@@ -213,7 +213,8 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
         KSub.SOS -> SosScreen(s, mesh, onDismiss = ::home)
         KSub.NONE -> Shell(s, mesh, tabs, tab, { tab = it }, onOpenSos = { sub = KSub.SOS }) {
             when (tab) {
-                Tab.RADAR -> RadarTab(s, mesh, night, setNight, onFind = ::startFinding, onRewind = { sub = KSub.REWIND }, onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE }, onSos = { sub = KSub.SOS })
+                Tab.RADAR -> RadarTab(s, mesh, night, setNight, onFind = ::startFinding, onRewind = { sub = KSub.REWIND }, onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE }, onSos = { sub = KSub.SOS },
+                    onOpen = { t -> when (t) { app.linkfill.core.voice.VoiceTarget.GROUP -> tab = Tab.GROUP; app.linkfill.core.voice.VoiceTarget.SETTINGS -> tab = Tab.SETTINGS; app.linkfill.core.voice.VoiceTarget.BANDS -> sub = KSub.BANDS; app.linkfill.core.voice.VoiceTarget.REWIND -> sub = KSub.REWIND; app.linkfill.core.voice.VoiceTarget.RADAR -> tab = Tab.RADAR } })
                 Tab.GROUP -> GroupTab(s, mesh, onScanFamily = { scan(KSub.SCAN_FAMILY) })
                 Tab.HELP -> HelpTab(s, mesh, onScanBand = { scan(KSub.SCAN_BAND) }, onBands = { sub = KSub.BANDS }, onRewind = { sub = KSub.REWIND })
                 Tab.BOARD -> BoardTab(s, mesh, night, setNight)
@@ -311,10 +312,10 @@ private fun warn(m: CrewMember, s: MeshUiState): Boolean {
 }
 
 @Composable
-private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onSos: () -> Unit = {}, onFind: (Int) -> Unit = {}, modifier: Modifier = Modifier) {
+private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onSos: () -> Unit = {}, onFind: (Int) -> Unit = {}, onOpen: (app.linkfill.core.voice.VoiceTarget) -> Unit = {}, modifier: Modifier = Modifier) {
     val p = LocalCall.current
     var voice by remember { mutableStateOf(false) }
-    if (voice) VoiceDialog(s, mesh, onFind = onFind, onSos = onSos, onDismiss = { voice = false })
+    if (voice) VoiceDialog(s, mesh, setNight = setNight, onFind = onFind, onSos = onSos, onOpen = onOpen, onDismiss = { voice = false })
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("KHOJ", fontFamily = Bricolage, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, letterSpacing = 4.sp, color = p.ink)
@@ -337,7 +338,7 @@ private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, se
 }
 
 @Composable
-private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onFind: (Int) -> Unit, onRewind: () -> Unit, onBatteryGuidance: () -> Unit = {}, onSos: () -> Unit = {}) {
+private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onFind: (Int) -> Unit, onRewind: () -> Unit, onBatteryGuidance: () -> Unit = {}, onSos: () -> Unit = {}, onOpen: (app.linkfill.core.voice.VoiceTarget) -> Unit = {}) {
     val p = LocalCall.current
     val me = s.myFix
     val heard = s.members.associate { it.originId.toLong() to it.heardAt }
@@ -347,7 +348,7 @@ private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNi
             else "${pl.distanceM.roundToInt()} m"))
     } else emptyList()
     Column(Modifier.fillMaxSize()) {
-        RadarHeader(s, mesh, night, setNight, onSos, onFind)
+        RadarHeader(s, mesh, night, setNight, onSos, onFind, onOpen)
         Spacer(Modifier.height(4.dp))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (!s.batteryUnrestricted) {

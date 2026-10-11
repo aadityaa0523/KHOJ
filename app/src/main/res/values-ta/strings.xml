@@ -154,4 +154,15 @@
     <string name="voice_left">%1$s உங்கள் இடப்புறம் உள்ளார், சுமார் %2$d அடி.</string>
     <string name="voice_right">%1$s உங்கள் வலப்புறம் உள்ளார், சுமார் %2$d அடி.</string>
     <string name="voice_mic">குரல்</string>
+
+    <!-- Voice assistant -->
+    <string name="voice_where_unknown">%1$s எங்கே இருக்கிறார் என்று இன்னும் தெரியவில்லை.</string>
+    <string name="voice_who_none">இப்போது அருகில் யாரும் இல்லை.</string>
+    <string name="voice_who_intro">அருகில்: %1$s.</string>
+    <string name="voice_who_item">%1$s, %2$d அடி</string>
+    <string name="voice_battery">%1$s பேட்டரி %2$d சதவீதம்.</string>
+    <string name="voice_help_text">நீங்கள் சொல்லலாம்: கோபியைத் தேடு. கோபி எங்கே. கோபி போனை ஒளிரச் செய். என் போனை ஒளிரச் செய். அருகில் யார். குழுவைத் திற. வட்டம் 50. இரவு மோட். பேட்டரி சேமிப்பு. செய்தி, பிறகு உங்கள் செய்தி. அல்லது SOS.</string>
+    <string name="voice_circle">வட்டத்தை %1$d மீ ஆக்கு</string>
+    <string name="voice_saver_on">பேட்டரி சேமிப்பை இயக்கு</string>
+    <string name="voice_saver_off">பேட்டரி சேமிப்பை நிறுத்து</string>
 </resources>

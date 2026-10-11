@@ -214,4 +214,15 @@
     <string name="light_self_send">Light up</string>
     <string name="light_self_title">Your phone is lit</string>
     <string name="light_self_body">Hold it up so people can see you. Tap Turn off when you are found.</string>
+
+    <!-- Voice assistant -->
+    <string name="voice_where_unknown">I do not know where %1$s is yet.</string>
+    <string name="voice_who_none">No one is nearby right now.</string>
+    <string name="voice_who_intro">Nearby: %1$s.</string>
+    <string name="voice_who_item">%1$s, %2$d steps</string>
+    <string name="voice_battery">%1$s\'s battery is %2$d percent.</string>
+    <string name="voice_help_text">You can say: find Gopi. Where is Gopi. Light up Gopi. Light up my phone. Who is nearby. Open group. Set circle to 50. Night mode. Battery saver. Tell family, then your message. Or SOS.</string>
+    <string name="voice_circle">Set circle to %1$d m</string>
+    <string name="voice_saver_on">Turn battery saver on</string>
+    <string name="voice_saver_off">Turn battery saver off</string>
 </resources>
