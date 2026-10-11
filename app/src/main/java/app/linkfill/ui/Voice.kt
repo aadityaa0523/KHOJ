@@ -30,6 +30,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.linkfill.R
+import app.linkfill.core.mesh.MeshMessage
+import app.linkfill.core.voice.VoiceIntent
+import app.linkfill.core.voice.VoiceIntentParser
 import app.linkfill.mesh.MeshController
 import app.linkfill.mesh.MeshUiState
 import java.util.Locale
@@ -128,10 +131,9 @@ fun VoiceDialog(s: MeshUiState, mesh: MeshController, onFind: (Int) -> Unit, onS
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) listen(asMessage) else mic.launch(Manifest.permission.RECORD_AUDIO)
     }
 
-    // What the command means: SOS words, or a group member's name.
-    val text = heard.lowercase()
-    val sos = !message && listOf("sos", "help", "emergency", "एसओएस", "मदद", "बचाओ", "सहायता", "एमरजेंसी", "எஸ்ஓஎஸ்", "உதவி", "காப்பாற்று", "ஆபத்து").any { text.contains(it) }
-    val member = if (!message && !sos) s.members.firstOrNull { text.contains(it.name.lowercase()) } else null
+    // What the command means, worked out on the phone (see VoiceIntentParser).
+    val intent = if (!message && heard.isNotBlank()) VoiceIntentParser.parse(heard, s.members.map { it.name }) else VoiceIntent.Unknown
+    val member = when (intent) { is VoiceIntent.Find -> s.members.getOrNull(intent.member); is VoiceIntent.Light -> intent.member?.let { s.members.getOrNull(it) }; else -> null }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -147,7 +149,7 @@ fun VoiceDialog(s: MeshUiState, mesh: MeshController, onFind: (Int) -> Unit, onS
                     VStage.LISTEN -> Text(stringResource(R.string.voice_listening), style = MaterialTheme.typography.headlineSmall)
                     VStage.HEARD -> {
                         Text("“$heard”", style = MaterialTheme.typography.headlineSmall)
-                        if (!message && !sos && member == null) Text(stringResource(R.string.voice_not_understood), style = MaterialTheme.typography.bodyMedium)
+                        if (!message && intent == VoiceIntent.Unknown) Text(stringResource(R.string.voice_not_understood), style = MaterialTheme.typography.bodyMedium)
                         else Text(stringResource(R.string.voice_confirm_note), style = MaterialTheme.typography.bodyMedium)
                     }
                     VStage.ERROR -> Text(stringResource(R.string.voice_error), style = MaterialTheme.typography.bodyMedium)
@@ -157,8 +159,12 @@ fun VoiceDialog(s: MeshUiState, mesh: MeshController, onFind: (Int) -> Unit, onS
         confirmButton = {
             when {
                 stage == VStage.HEARD && message -> TextButton({ mesh.sendText(heard); onDismiss() }) { Text(stringResource(R.string.voice_send)) }
-                stage == VStage.HEARD && sos -> TextButton({ onDismiss(); onSos() }) { Text(stringResource(R.string.voice_open_sos)) }
-                stage == VStage.HEARD && member != null -> TextButton({ onDismiss(); onFind(member.originId) }) { Text(stringResource(R.string.voice_find, member.name)) }
+                stage == VStage.HEARD && intent == VoiceIntent.Sos -> TextButton({ onDismiss(); onSos() }) { Text(stringResource(R.string.voice_open_sos)) }
+                stage == VStage.HEARD && intent is VoiceIntent.Find && member != null -> TextButton({ onDismiss(); onFind(member.originId) }) { Text(stringResource(R.string.voice_find, member.name)) }
+                stage == VStage.HEARD && intent is VoiceIntent.Light && member != null ->
+                    TextButton({ mesh.sendLight(member.originId, MeshMessage.LIGHT_TORCH or MeshMessage.LIGHT_SCREEN, 60, member.name); onDismiss() }) { Text(stringResource(R.string.light_send, member.name)) }
+                stage == VStage.HEARD && intent is VoiceIntent.Light ->
+                    TextButton({ mesh.lightSelf(MeshMessage.LIGHT_TORCH or MeshMessage.LIGHT_SCREEN, 60); onDismiss() }) { Text(stringResource(R.string.light_self_button)) }
                 stage == VStage.HEARD || stage == VStage.ERROR -> TextButton({ stage = VStage.CHOOSE }) { Text(stringResource(R.string.voice_again)) }
             }
         },
