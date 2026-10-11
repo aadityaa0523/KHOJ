@@ -140,11 +140,11 @@ private fun dirWord(bearing: Double, s: MeshUiState) = if (s.headingDeg != null)
 private enum class KSub { NONE, SCAN_BAND, FOUND_BAND, BANDS, SHOW_BAND, REWIND, SCAN_FAMILY, SCAN_POLICE, FIND, BATTERY_GUIDANCE, SOS }
 
 private enum class Tab(val icon: KI, val label: Int) {
-    RADAR(KI.RADAR, R.string.tab_radar), GROUP(KI.GROUP, R.string.tab_group), HELP(KI.HELP, R.string.tab_help),
+    RADAR(KI.RADAR, R.string.tab_radar), ACTIVITY(KI.BELL, R.string.tab_activity), GROUP(KI.GROUP, R.string.tab_group), HELP(KI.HELP, R.string.tab_help),
     BOARD(KI.SIREN, R.string.tab_board), SCAN(KI.SCAN, R.string.tab_scan), ALERTS(KI.BELL, R.string.tab_alerts), SETTINGS(KI.SETTINGS, R.string.settings),
 }
 
-private val MEMBER_TABS = listOf(Tab.RADAR, Tab.GROUP, Tab.HELP, Tab.SETTINGS)
+private val MEMBER_TABS = listOf(Tab.RADAR, Tab.ACTIVITY, Tab.GROUP, Tab.HELP, Tab.SETTINGS)
 private val HELPER_TABS = listOf(Tab.BOARD, Tab.SCAN, Tab.ALERTS, Tab.SETTINGS)
 
 @Composable
@@ -217,6 +217,8 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
             when (tab) {
                 Tab.RADAR -> NearbyScreen(s, mesh, findUi?.targetId, setNight, onFind = ::startFinding, onSos = { sub = KSub.SOS }, onRewind = { sub = KSub.REWIND },
                     onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE },
+                    onOpen = { t -> when (t) { app.linkfill.core.voice.VoiceTarget.GROUP -> tab = Tab.GROUP; app.linkfill.core.voice.VoiceTarget.SETTINGS -> tab = Tab.SETTINGS; app.linkfill.core.voice.VoiceTarget.BANDS -> sub = KSub.BANDS; app.linkfill.core.voice.VoiceTarget.REWIND -> sub = KSub.REWIND; app.linkfill.core.voice.VoiceTarget.RADAR -> tab = Tab.RADAR } })
+                Tab.ACTIVITY -> ActivityTab(s, mesh, night, setNight, onFind = ::startFinding, onSos = { sub = KSub.SOS }, onRewind = { sub = KSub.REWIND },
                     onOpen = { t -> when (t) { app.linkfill.core.voice.VoiceTarget.GROUP -> tab = Tab.GROUP; app.linkfill.core.voice.VoiceTarget.SETTINGS -> tab = Tab.SETTINGS; app.linkfill.core.voice.VoiceTarget.BANDS -> sub = KSub.BANDS; app.linkfill.core.voice.VoiceTarget.REWIND -> sub = KSub.REWIND; app.linkfill.core.voice.VoiceTarget.RADAR -> tab = Tab.RADAR } })
                 Tab.GROUP -> GroupTab(s, mesh, onScanFamily = { scan(KSub.SCAN_FAMILY) })
                 Tab.HELP -> HelpTab(s, mesh, onScanBand = { scan(KSub.SCAN_BAND) }, onBands = { sub = KSub.BANDS }, onRewind = { sub = KSub.REWIND })

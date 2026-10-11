@@ -239,4 +239,15 @@
     <string name="mini_open">Tap to open</string>
     <string name="find_steps">about %1$d steps</string>
     <string name="find_plusminus">\u00b1 %1$d m</string>
+
+    <!-- Activity (prototype v3) -->
+    <string name="tab_activity">Activity</string>
+    <string name="activity_say">Say a message</string>
+    <string name="activity_say_desc">Speak it, we type it and send it</string>
+    <string name="activity_write">Write a message</string>
+    <string name="activity_write_desc">Send a short text to the group</string>
+    <string name="activity_earlier">Earlier</string>
+    <string name="activity_empty">Nothing yet. Messages, alerts and meeting points will show here.</string>
+    <string name="activity_hint">Message</string>
+    <string name="activity_send">Send</string>
 </resources>

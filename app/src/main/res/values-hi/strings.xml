@@ -179,4 +179,15 @@
     <string name="mini_open">खोलने के लिए दबाएँ</string>
     <string name="find_steps">लगभग %1$d कदम</string>
     <string name="find_plusminus">± %1$d मी</string>
+
+    <!-- Activity -->
+    <string name="tab_activity">गतिविधि</string>
+    <string name="activity_say">संदेश बोलें</string>
+    <string name="activity_say_desc">बोलिए, हम लिखकर भेज देंगे</string>
+    <string name="activity_write">संदेश लिखें</string>
+    <string name="activity_write_desc">समूह को छोटा संदेश भेजें</string>
+    <string name="activity_earlier">पहले</string>
+    <string name="activity_empty">अभी कुछ नहीं। संदेश, अलर्ट और मिलने की जगह यहाँ दिखेंगे।</string>
+    <string name="activity_hint">संदेश</string>
+    <string name="activity_send">भेजें</string>
 </resources>
