@@ -65,14 +65,14 @@ fun saveBandImage(context: Context, band: Band): Boolean {
     val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val c = Canvas(out)
     c.drawColor(Color.WHITE)
-    c.drawBitmap(Bitmap.createScaledBitmap(qrBitmap(band.toQrText(), 540), 540, 540, false), 30f, 30f, null)
+    c.drawBitmap(Bitmap.createScaledBitmap(qrBitmap(band.toPrintableQr(), 540), 540, 540, false), 30f, 30f, null)
     val big = Paint().apply { color = Color.BLACK; textSize = 84f; typeface = Typeface.DEFAULT_BOLD; isAntiAlias = true }
     val mid = Paint().apply { color = Color.BLACK; textSize = 54f; isAntiAlias = true }
     val small = Paint().apply { color = Color.DKGRAY; textSize = 40f; isAntiAlias = true }
     c.drawText("${band.name}${if (band.age > 0) ", ${band.age}" else ""}", 620f, 140f, big)
     c.drawText("If lost, call: ${band.phone}", 620f, 250f, mid)
     c.drawText("Meet at: ${band.meetingPoint}", 620f, 340f, mid)
-    c.drawText("Volunteers: scan with KHOJ to alert the family", 620f, 450f, small)
+    c.drawText("Scan with any phone camera to call the family", 620f, 450f, small)
     c.drawText("Khoya-Paya: bring to the nearest help desk", 620f, 510f, small)
     val values = ContentValues().apply {
         put(MediaStore.Images.Media.DISPLAY_NAME, "KHOJ band ${band.name}.png")

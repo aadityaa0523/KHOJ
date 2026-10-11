@@ -64,6 +64,19 @@ class SafetyTest {
         assertNull(Band.parse(Band.PREFIX + "AAAA"))
     }
 
+    @Test fun printedBandIsAContactCardAnyCameraCanReadAndKhojStillParses() {
+        val band = Band(123, 7, PublicCrypto.compress(PublicCrypto.newKeyPair().public), "Riya", 6, "+91 98765 43210", "Blue tent, Sector 4; Gate 2")
+        val card = band.toPrintableQr()
+        assertTrue(card.startsWith("BEGIN:VCARD\nVERSION:3.0\n")); assertTrue(card.endsWith("\nEND:VCARD"))
+        assertTrue("callable number for any camera app", "\nTEL;TYPE=CELL:+919876543210\n" in card)
+        assertTrue("name shows on the card", "\nFN:Lost: Riya\\, 6\n" in card)
+        assertTrue("vCard special characters are escaped", "Blue tent\\, Sector 4\\; Gate 2" in card)
+        assertEquals(band, Band.parse(card))
+        assertTrue("small enough to print and scan on a wristband", card.length < 420)
+        // A real QR encoder accepts it, so a printed band can carry it.
+        com.google.zxing.qrcode.QRCodeWriter().encode(card, com.google.zxing.BarcodeFormat.QR_CODE, 400, 400)
+    }
+
     @Test fun bandQrDecodesWithAStandardReader() {
         val band = Band(5, 9, PublicCrypto.compress(PublicCrypto.newKeyPair().public), "Ramdulari", 68, "9000000000", "Blue tent, Sector 4")
         val m = com.google.zxing.qrcode.QRCodeWriter().encode(band.toQrText(), com.google.zxing.BarcodeFormat.QR_CODE, 400, 400)

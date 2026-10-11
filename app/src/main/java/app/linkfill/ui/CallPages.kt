@@ -408,7 +408,7 @@ private fun BandPass(band: Band) {
     ) {
         Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(R.string.band_pass_label), fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold, color = Color(0xA6FFFFFF), modifier = Modifier.fillMaxWidth())
-            Box(Modifier.widthIn(max = 280.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White).padding(10.dp)) { QrImage(band.toQrText(), band.name) }
+            Box(Modifier.widthIn(max = 280.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White).padding(10.dp)) { QrImage(band.toPrintableQr(), band.name) }
             Text(stringResource(R.string.call_number, band.phone), style = MaterialTheme.typography.titleMedium, color = Color.White, textAlign = TextAlign.Center)
             Text(stringResource(R.string.meet_at, band.meetingPoint), style = MaterialTheme.typography.titleMedium, color = Color(0xCCFFFFFF), textAlign = TextAlign.Center)
         }

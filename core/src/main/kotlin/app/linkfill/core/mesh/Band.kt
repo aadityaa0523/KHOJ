@@ -31,17 +31,34 @@ data class Band(
         return PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(b.array())
     }
 
+    /**
+     * What is printed on the wristband: a standard contact card (vCard 3.0). Any phone camera, with or without KHOJ and with
+     * no internet, shows the name, the meeting point and a Call button. The KHOJ data rides in the note, so a phone with
+     * KHOJ can still send the family an encrypted "found" report. Calling needs ordinary phone signal; nothing needs internet.
+     */
+    fun toPrintableQr(): String {
+        // vCard text values escape backslash, comma and semicolon; line breaks are not allowed inside a value.
+        fun esc(v: String) = v.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", " ")
+        val who = name + (if (age > 0) ", $age" else "")
+        val ph = phone.filter { it.isDigit() || it == '+' }
+        val meet = if (meetingPoint.isBlank()) "" else " " + esc("Meet at $meetingPoint.")
+        return "BEGIN:VCARD\nVERSION:3.0\nFN:" + esc("Lost: $who") + "\nTEL;TYPE=CELL:" + ph +
+            "\nNOTE:" + esc("If found, please call this number.") + meet + " " + toQrText() + "\nEND:VCARD"
+    }
+
     override fun equals(other: Any?) = other is Band && other.toQrText() == toQrText()
     override fun hashCode() = toQrText().hashCode()
 
     companion object {
         const val PREFIX = "KHOJ-BAND1:"
 
-        /** Null for anything that is not a valid KHOJ band (other QR codes, damaged prints). */
+        private val EMBEDDED = Regex(Regex.escape(PREFIX) + "([A-Za-z0-9_-]+)")
+
+        /** Null for anything that is not a valid KHOJ band (other QR codes, damaged prints). Reads old bands and contact-card bands. */
         fun parse(text: String): Band? {
-            if (!text.startsWith(PREFIX)) return null
+            val payload = EMBEDDED.find(text)?.groupValues?.get(1) ?: return null
             return try {
-                val b = ByteBuffer.wrap(Base64.getUrlDecoder().decode(text.removePrefix(PREFIX)))
+                val b = ByteBuffer.wrap(Base64.getUrlDecoder().decode(payload))
                 val crew = b.int; val id = b.int
                 val key = ByteArray(33).also { b.get(it) }
                 val age = b.get().toInt() and 0xFF
