@@ -185,4 +185,27 @@
     <string name="light_allow_title">Family can light up my phone</string>
     <string name="light_allow_desc">Torch, bright screen and sound, only from this group. You can stop it any time. Flashing stays under 3 times a second.</string>
     <string name="light_section">Light up</string>
+
+    <!-- Voice -->
+    <string name="voice_title">Voice</string>
+    <string name="voice_choose">Speak instead of typing. Nothing happens until you tap the button.</string>
+    <string name="voice_command">Say a command</string>
+    <string name="voice_message">Say a message</string>
+    <string name="voice_listening">Listening\u2026</string>
+    <string name="voice_confirm_note">Tap the button to do it.</string>
+    <string name="voice_not_understood">I did not understand. Try \u201CFind\u201D and a name, or \u201CSOS\u201D.</string>
+    <string name="voice_error">I could not hear that. Check that voice typing works on this phone and the microphone is allowed.</string>
+    <string name="voice_send">Send to group</string>
+    <string name="voice_open_sos">Open SOS</string>
+    <string name="voice_find">Find %1$s</string>
+    <string name="voice_again">Try again</string>
+    <string name="voice_speak">Say it aloud</string>
+    <string name="voice_no_voice">This phone has no voice installed for this language.</string>
+    <string name="voice_no_distance">%1$s: no distance yet.</string>
+    <string name="voice_far">%1$s is about %2$d steps away. No direction yet.</string>
+    <string name="voice_ahead">%1$s is ahead, about %2$d steps.</string>
+    <string name="voice_behind">%1$s is behind you, about %2$d steps.</string>
+    <string name="voice_left">%1$s is to your left, about %2$d steps.</string>
+    <string name="voice_right">%1$s is to your right, about %2$d steps.</string>
+    <string name="voice_mic">Voice</string>
 </resources>

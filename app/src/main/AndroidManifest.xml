@@ -29,6 +29,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Haptic cues: the fall/panic countdown and the Find Member "signal getting stronger" buzz. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Microphone: only for the Voice button (speech to text); asked the first time it is used. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Android 16 Ranging module (UWB, Bluetooth Channel Sounding, Wi-Fi RTT). Requested only when Find Member needs it. -->
     <uses-permission android:name="android.permission.RANGING" />
     <!-- Lets the user exempt the mesh from battery optimisation so it keeps relaying with the screen off. -->
@@ -36,6 +38,11 @@
 
     <!-- Cleartext is allowed so a relay on a laptop (http://LAN-IP:8787) works in demos. Mesh packets are
          already encrypted with the crew key; only packet metadata would be visible on such a link. -->
+    <queries>
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
+        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
+    </queries>
+
     <application
         android:name=".LinkFillApp"
         android:allowBackup="false"

@@ -113,6 +113,7 @@ private fun fieldHeat(p: CallPalette, distanceM: Double?, prox: Proximity?): Col
 fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, onAllowRanging: () -> Unit, onTrustAngle: (Boolean) -> Unit, onGroundTruth: (Double?) -> Unit, onLight: (Int, Int) -> Unit = { _, _ -> }) {
     val p = LocalCall.current
     var askLight by remember { mutableStateOf(false) }
+    val speaker = rememberSpeaker()
     if (ui == null) { CallPage(stringResource(R.string.find_mode_none), onStop) {}; return }
     val s = ui.state
     val hot = fieldHeat(p, s.distanceM, s.proximity)
@@ -150,6 +151,8 @@ fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, 
                 if (needRangingPermission) { Spacer(Modifier.height(8.dp)); CallButton(stringResource(R.string.find_allow_ranging), onAllowRanging, icon = KI.RADAR) }
             }
             Sources(ui, onTrustAngle, onGroundTruth)
+            val sentence = spokenFind(ui.targetName, s.distanceM, ui.arrowSmoothedDeg)
+            CallButton(stringResource(R.string.voice_speak), { speaker.say(sentence) }, tone = Tone.QUIET, icon = KI.BELL)
             CallButton(stringResource(R.string.light_button), { askLight = true }, tone = Tone.QUIET, icon = KI.SIREN)
             CallButton(stringResource(R.string.find_stop), onStop, tone = Tone.QUIET, icon = KI.CLOSE)
             Spacer(Modifier.height(20.dp))

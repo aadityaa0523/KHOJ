@@ -311,13 +311,17 @@ private fun warn(m: CrewMember, s: MeshUiState): Boolean {
 }
 
 @Composable
-private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onSos: () -> Unit = {}, modifier: Modifier = Modifier) {
+private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onSos: () -> Unit = {}, onFind: (Int) -> Unit = {}, modifier: Modifier = Modifier) {
     val p = LocalCall.current
+    var voice by remember { mutableStateOf(false) }
+    if (voice) VoiceDialog(s, mesh, onFind = onFind, onSos = onSos, onDismiss = { voice = false })
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth().heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("KHOJ", fontFamily = Bricolage, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, letterSpacing = 4.sp, color = p.ink)
             Text("खोज", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = p.gold, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
             Spacer(Modifier.weight(1f))
+            GlassIconButton(KI.MIC, stringResource(R.string.voice_mic)) { voice = true }
+            Spacer(Modifier.width(8.dp))
             SosPillButton(onClick = onSos)
             Spacer(Modifier.width(8.dp))
             GlassIconButton(if (night) KI.SUN else KI.MOON, stringResource(if (night) R.string.theme_day else R.string.theme_night)) { setNight(!night) }
@@ -343,7 +347,7 @@ private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNi
             else "${pl.distanceM.roundToInt()} m"))
     } else emptyList()
     Column(Modifier.fillMaxSize()) {
-        RadarHeader(s, mesh, night, setNight, onSos)
+        RadarHeader(s, mesh, night, setNight, onSos, onFind)
         Spacer(Modifier.height(4.dp))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (!s.batteryUnrestricted) {
