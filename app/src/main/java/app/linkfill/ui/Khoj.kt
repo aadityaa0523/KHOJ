@@ -15,9 +15,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -68,11 +70,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asComposeRenderEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -130,7 +135,7 @@ private fun dirWord(bearing: Double, s: MeshUiState) = if (s.headingDeg != null)
 
 // ------------------------------------------------------------------ entry
 
-private enum class KSub { NONE, SCAN_BAND, FOUND_BAND, BANDS, SHOW_BAND, REWIND, SCAN_FAMILY, SCAN_POLICE, FIND, BATTERY_GUIDANCE }
+private enum class KSub { NONE, SCAN_BAND, FOUND_BAND, BANDS, SHOW_BAND, REWIND, SCAN_FAMILY, SCAN_POLICE, FIND, BATTERY_GUIDANCE, SOS }
 
 private enum class Tab(val icon: KI, val label: Int) {
     RADAR(KI.RADAR, R.string.tab_radar), GROUP(KI.GROUP, R.string.tab_group), HELP(KI.HELP, R.string.tab_help),
@@ -151,7 +156,7 @@ fun KhojApp(s: MeshUiState, mesh: MeshController, onAdvanced: () -> Unit) {
         if (splash) { Splash { splash = false }; return@CallTheme }
         if (!s.setupDone) { SetupFlow(s, mesh); return@CallTheme }
         LaunchedEffect(s.setupDone) { if (!s.running && missingPermissions(context).isEmpty()) mesh.start() }
-        if (s.countdown != null) { CountdownScreen(s, mesh); return@CallTheme }
+        if (s.countdown != null) { SosScreen(s, mesh, onDismiss = mesh::cancelCountdown); return@CallTheme }
         AlarmBeat(s.alerts) { Main(s, mesh, night, setNight, onAdvanced) }
     }
 }
@@ -184,6 +189,7 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
             KSub.NONE -> tab = tabs.first()
             KSub.SHOW_BAND -> sub = KSub.BANDS
             KSub.FIND -> { mesh.stopFind(); home() }
+            KSub.SOS -> home()
             else -> home()
         }
     }
@@ -202,9 +208,10 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
         KSub.SHOW_BAND -> Band.parse(bandText)?.let { ShowBandPage(it, mesh) { sub = KSub.BANDS } } ?: home()
         KSub.REWIND -> RewindPage(s, mesh, ::home)
         KSub.BATTERY_GUIDANCE -> BatteryGuidancePage(s, ::home)
-        KSub.NONE -> Shell(s, mesh, tabs, tab, { tab = it }) {
+        KSub.SOS -> SosScreen(s, mesh, onDismiss = ::home)
+        KSub.NONE -> Shell(s, mesh, tabs, tab, { tab = it }, onOpenSos = { sub = KSub.SOS }) {
             when (tab) {
-                Tab.RADAR -> RadarTab(s, mesh, night, setNight, onFind = ::startFinding, onRewind = { sub = KSub.REWIND }, onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE })
+                Tab.RADAR -> RadarTab(s, mesh, night, setNight, onFind = ::startFinding, onRewind = { sub = KSub.REWIND }, onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE }, onSos = { sub = KSub.SOS })
                 Tab.GROUP -> GroupTab(s, mesh, onScanFamily = { scan(KSub.SCAN_FAMILY) })
                 Tab.HELP -> HelpTab(s, mesh, onScanBand = { scan(KSub.SCAN_BAND) }, onBands = { sub = KSub.BANDS }, onRewind = { sub = KSub.REWIND })
                 Tab.BOARD -> BoardTab(s, mesh, night, setNight)
@@ -218,12 +225,12 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
 
 /** The frame every tab lives in: aurora ground, the tab, the SOS dock (always one reach away) and the navigation bar. */
 @Composable
-private fun Shell(s: MeshUiState, mesh: MeshController, tabs: List<Tab>, tab: Tab, onTab: (Tab) -> Unit, content: @Composable () -> Unit) {
+private fun Shell(s: MeshUiState, mesh: MeshController, tabs: List<Tab>, tab: Tab, onTab: (Tab) -> Unit, onOpenSos: () -> Unit = {}, content: @Composable () -> Unit) {
     val p = LocalCall.current
     CallBackground {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))) {
             Box(Modifier.weight(1f)) { content() }
-            SosDock(s, mesh)
+            SosDock(s, mesh, onOpenSos)
             NavigationBar(containerColor = p.glassStrong, tonalElevation = 0.dp) {
                 for (t in tabs) {
                     val label = stringResource(t.label)
@@ -302,25 +309,29 @@ private fun warn(m: CrewMember, s: MeshUiState): Boolean {
 }
 
 @Composable
-private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit) {
+private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onSos: () -> Unit = {}, modifier: Modifier = Modifier) {
     val p = LocalCall.current
-    Row(Modifier.fillMaxWidth().heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text("KHOJ", fontFamily = Bricolage, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, letterSpacing = 4.sp, color = p.ink)
-        Text("खोज", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = p.gold, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
-        Spacer(Modifier.weight(1f))
-        GlassIconButton(if (night) KI.SUN else KI.MOON, stringResource(if (night) R.string.theme_day else R.string.theme_night)) { setNight(!night) }
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("KHOJ", fontFamily = Bricolage, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, letterSpacing = 4.sp, color = p.ink)
+            Text("खोज", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = p.gold, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
+            Spacer(Modifier.weight(1f))
+            SosPillButton(onClick = onSos)
+            Spacer(Modifier.width(8.dp))
+            GlassIconButton(if (night) KI.SUN else KI.MOON, stringResource(if (night) R.string.theme_day else R.string.theme_night)) { setNight(!night) }
+        }
+        val live = s.members.count { s.now - it.heardAt < 45_000 }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            LivePill((if (s.running) stringResource(R.string.status_on, live) else stringResource(R.string.status_off)) +
+                if (s.running && s.lowPower) " · " + stringResource(R.string.low_power_on) else "", if (s.running) p.ok else p.alarm)
+            if (!s.running) { Spacer(Modifier.width(8.dp)); FilledTonalButton(onClick = mesh::start, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.turn_on)) } }
+        }
+        s.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
     }
-    val live = s.members.count { s.now - it.heardAt < 45_000 }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        LivePill((if (s.running) stringResource(R.string.status_on, live) else stringResource(R.string.status_off)) +
-            if (s.running && s.lowPower) " · " + stringResource(R.string.low_power_on) else "", if (s.running) p.ok else p.alarm)
-        if (!s.running) { Spacer(Modifier.width(8.dp)); FilledTonalButton(onClick = mesh::start, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.turn_on)) } }
-    }
-    s.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
 }
 
 @Composable
-private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onFind: (Int) -> Unit, onRewind: () -> Unit, onBatteryGuidance: () -> Unit = {}) {
+private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onFind: (Int) -> Unit, onRewind: () -> Unit, onBatteryGuidance: () -> Unit = {}, onSos: () -> Unit = {}) {
     val p = LocalCall.current
     val me = s.myFix
     val heard = s.members.associate { it.originId.toLong() to it.heardAt }
@@ -329,8 +340,10 @@ private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNi
         pl.copy(point = pl.point.copy(label = if (pl.point.stale) stringResource(R.string.seen_ago, agoText(s.now - (heard[pl.point.id] ?: s.now)))
             else "${pl.distanceM.roundToInt()} m"))
     } else emptyList()
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        RadarHeader(s, mesh, night, setNight)
+    Column(Modifier.fillMaxSize()) {
+        RadarHeader(s, mesh, night, setNight, onSos)
+        Spacer(Modifier.height(4.dp))
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (!s.batteryUnrestricted) {
             Glass(rim = heatRim(), padding = PaddingValues(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -387,6 +400,7 @@ private fun RadarTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNi
             }
         }
         Spacer(Modifier.height(8.dp))
+        }
     }
 }
 
@@ -499,78 +513,372 @@ private fun BoardTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNi
  * letting go early cancels. After sending: the siren control and who is coming. Plain on purpose: not a wow moment.
  */
 @Composable
-private fun SosDock(s: MeshUiState, mesh: MeshController) {
+private fun SosDock(s: MeshUiState, mesh: MeshController, onOpenSos: () -> Unit = {}) {
     val p = LocalCall.current
     val recent = s.now - s.lastSosAt < 120_000
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (s.sosWaitingForGps && s.now - s.lastSosAt < 600_000) Text(stringResource(R.string.sos_no_gps), style = MaterialTheme.typography.bodyMedium, color = if (p.night) Color(0xFFFF8A96) else p.alarm)
-        for (r in s.mySosResponders) Text(stringResource(R.string.help_coming_body, r), style = MaterialTheme.typography.titleMedium, color = p.ok)
-        if (s.sirenOn) Button(onClick = mesh::stopSiren, shape = RoundedCornerShape(38.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
-            modifier = Modifier.fillMaxWidth().height(76.dp)) {
-            KIcon(KI.SIREN, Color.White, 28.dp); Spacer(Modifier.width(12.dp))
-            Text(stringResource(R.string.stop_siren), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
-        } else HoldSos(sent = recent) { mesh.sendSos(SosKind.MANUAL) }
-    }
-}
-
-@Composable
-private fun HoldSos(sent: Boolean, onSos: () -> Unit) {
-    val p = LocalCall.current
-    val progress = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
-    val haptic = LocalHapticFeedback.current
-    val label = stringResource(R.string.sos_hold)
-    val shape = RoundedCornerShape(38.dp)
-    Box(
-        Modifier.fillMaxWidth().height(76.dp).clip(shape)
-            .background(Brush.horizontalGradient(listOf(Color(0xFFF2283C), Color(0xFFB30F2E))))
-            .border(3.dp, Brush.horizontalGradient(listOf(p.fire, p.gold, p.fire)), shape)
-            .pointerInput(Unit) {
-                detectTapGestures(onPress = {
-                    val job = scope.launch {
-                        progress.snapTo(0f)
-                        progress.animateTo(1f, tween(2000, easing = LinearEasing))
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onSos()
-                    }
-                    tryAwaitRelease()
-                    job.cancel()
-                    scope.launch { progress.snapTo(0f) }
-                })
+        if (s.sosWaitingForGps && s.now - s.lastSosAt < 600_000) {
+            Text(stringResource(R.string.sos_no_gps), style = MaterialTheme.typography.bodyMedium, color = if (p.night) Color(0xFFFF8A96) else p.alarm)
+        }
+        for (r in s.mySosResponders) {
+            Text(stringResource(R.string.help_coming_body, r), style = MaterialTheme.typography.titleMedium, color = p.ok)
+        }
+        if (s.sirenOn) {
+            Button(
+                onClick = mesh::stopSiren,
+                shape = RoundedCornerShape(32.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = p.red, contentColor = Color.White),
+                modifier = Modifier.fillMaxWidth().height(64.dp).pressFeedback()
+            ) {
+                KIcon(KI.SIREN, Color.White, 24.dp)
+                Spacer(Modifier.width(10.dp))
+                Text(stringResource(R.string.stop_siren), fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
             }
-            .semantics { contentDescription = label; onClick(label) { onSos(); true } },
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Box(Modifier.fillMaxHeight().fillMaxWidth(progress.value.coerceAtLeast(0.001f)).background(Color(0x55FFFFFF)))
-        Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(54.dp).clip(CircleShape).background(Color(0x40000000)).border(3.dp, Color.White, CircleShape), contentAlignment = Alignment.Center) {
-                Text("SOS", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp)
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text(if (sent) stringResource(R.string.sos_active) else label, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.5.sp, maxLines = 1)
-                Text(if (sent) stringResource(R.string.sos_sent) else stringResource(R.string.sos_hint), color = Color.White.copy(alpha = 0.92f), style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+        } else {
+            HoldSos(sent = recent, onTap = onOpenSos) {
+                mesh.sendSos(SosKind.MANUAL)
             }
         }
     }
 }
 
-/** Fall or panic countdown: the whole screen is the alarm, one number, one huge "I'm OK". */
 @Composable
-private fun CountdownScreen(s: MeshUiState, mesh: MeshController) {
+private fun HoldSos(sent: Boolean, onTap: () -> Unit = {}, onSos: () -> Unit) {
     val p = LocalCall.current
-    val left = ((s.countdownEndsAt - s.now) / 1000).coerceAtLeast(0).toInt()
-    val still = rememberReducedMotion()
-    val pulse = if (still) null else rememberInfiniteTransition(label = "count").animateFloat(0f, 1f, infiniteRepeatable(tween(1000, easing = LinearEasing), RepeatMode.Restart), label = "pulse")
-    Box(Modifier.fillMaxSize().background(p.alarm)) {
-        Canvas(Modifier.fillMaxSize()) { soundArcs(Offset(size.width / 2, size.height * 0.42f), size.width * 0.9f, pulse?.value ?: 0.4f, listOf(Color.White), count = 4, width = 3f) }
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(stringResource(if (s.countdown == SosKind.FALL) R.string.countdown_fall else R.string.countdown_panic), color = Color.White, style = MaterialTheme.typography.headlineLarge, textAlign = TextAlign.Center)
-            Text("$left", color = Color.White, fontFamily = Bricolage, fontWeight = FontWeight.ExtraBold, fontSize = 140.sp)
-            Text(stringResource(R.string.countdown_body, left), color = Color.White, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
-            Button(onClick = mesh::cancelCountdown, colors = ButtonDefaults.buttonColors(containerColor = Color.White), shape = RoundedCornerShape(32.dp), modifier = Modifier.fillMaxWidth().height(120.dp)) {
-                Text(stringResource(R.string.cancel_sos), color = p.alarm, fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
+    val progress = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    val label = stringResource(R.string.sos_hold)
+    val shape = RoundedCornerShape(28.dp)
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(68.dp)
+            .shadow(6.dp, shape, ambientColor = Color(0x66FF3B30), spotColor = Color(0x80FF3B30))
+            .clip(shape)
+            .background(p.red)
+            .pressFeedback()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onTap() },
+                    onPress = {
+                        val job = scope.launch {
+                            progress.snapTo(0f)
+                            progress.animateTo(1f, tween(2000, easing = LinearEasing))
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onSos()
+                        }
+                        tryAwaitRelease()
+                        job.cancel()
+                        scope.launch { progress.snapTo(0f) }
+                    }
+                )
             }
+            .semantics { contentDescription = label; onClick(label) { onTap(); true } },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(Modifier.fillMaxHeight().fillMaxWidth(progress.value.coerceAtLeast(0.001f)).background(Color(0x55FFFFFF)))
+        Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x33000000))
+                    .border(2.dp, Color.White, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                KIcon(KI.SIREN, Color.White, 22.dp)
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = if (sent) stringResource(R.string.sos_active) else label,
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    maxLines = 1
+                )
+                Text(
+                    text = if (sent) stringResource(R.string.sos_sent) else stringResource(R.string.sos_hint),
+                    color = Color.White.copy(alpha = 0.9f),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Full-screen SOS Flow matching prototype v3 sosScreen:
+ * - Radial deep emergency red background: radial-gradient(120% 80% at 50% 30%, #FF5A4F, #D1241A 70%, #9E1810)
+ * - Countdown state:
+ *   - 290 dp circular countdown with animated white progress arc from -90 deg
+ *   - Huge 140sp tabular numeral in center
+ *   - Bold title "Sending SOS" (or "Fall detected" / "Panic signal")
+ *   - Subtitle "The siren starts and your family gets your location."
+ *   - 64 dp tall glass "Cancel" button
+ * - SOS Sent state (when countdown finishes or s.sirenOn):
+ *   - Expanding ripple waves (.rip)
+ *   - 130 dp white checkmark disc (.chk) with red check icon and pop animation
+ *   - 40sp bold "SOS sent"
+ *   - Subtitle "The siren is on and your family's phones have your location."
+ *   - 64 dp tall glass "Stop siren" button
+ */
+@Composable
+private fun SosScreen(s: MeshUiState, mesh: MeshController, onDismiss: () -> Unit) {
+    val still = rememberReducedMotion()
+    val isAutoCountdown = s.countdown != null
+    var manualSecondsLeft by remember { mutableStateOf(5) }
+    val countdownAnim = remember { Animatable(1f) }
+    val isDone = s.sirenOn || (!isAutoCountdown && manualSecondsLeft <= 0)
+
+    LaunchedEffect(isAutoCountdown, isDone) {
+        if (!isAutoCountdown && !isDone) {
+            launch {
+                countdownAnim.animateTo(0f, tween(5000, easing = LinearEasing))
+            }
+            for (i in 5 downTo 1) {
+                manualSecondsLeft = i
+                delay(1000)
+            }
+            manualSecondsLeft = 0
+            mesh.sendSos(SosKind.MANUAL)
+        }
+    }
+
+    val ripTransition = rememberInfiniteTransition(label = "rip")
+    val ripPhase by if (still || !isDone) remember { mutableStateOf(0f) } else ripTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart),
+        label = "ripPhase"
+    )
+
+    val popScale = remember { Animatable(if (still) 1f else 0.3f) }
+    LaunchedEffect(isDone) {
+        if (isDone && !still) {
+            popScale.snapTo(0.3f)
+            popScale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
+        }
+    }
+
+    val secondsToDisplay = if (isAutoCountdown) {
+        ((s.countdownEndsAt - s.now) / 1000).coerceAtLeast(0).toInt()
+    } else {
+        manualSecondsLeft
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF9E1810))
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = Offset(size.width * 0.5f, size.height * 0.3f)
+            val r = size.width * 0.85f
+            drawRect(
+                brush = Brush.radialGradient(
+                    0.0f to Color(0xFFFF5A4F),
+                    0.7f to Color(0xFFD1241A),
+                    1.0f to Color(0xFF9E1810),
+                    center = c,
+                    radius = r
+                )
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(Modifier.height(40.dp))
+
+            if (!isDone) {
+                Box(
+                    modifier = Modifier.size(290.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        val strokeW = 10.dp.toPx()
+                        val ringR = 128.dp.toPx()
+                        drawCircle(
+                            color = Color(0x40FFFFFF),
+                            radius = ringR,
+                            style = Stroke(width = strokeW)
+                        )
+                        val sweep = if (isAutoCountdown) {
+                            (secondsToDisplay / 10f).coerceIn(0f, 1f) * 360f
+                        } else {
+                            countdownAnim.value * 360f
+                        }
+                        drawArc(
+                            color = Color.White,
+                            startAngle = -90f,
+                            sweepAngle = sweep,
+                            useCenter = false,
+                            style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                        )
+                    }
+                    Text(
+                        text = "$secondsToDisplay",
+                        fontFamily = Bricolage,
+                        fontSize = 140.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-8).sp,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(Modifier.height(28.dp))
+
+                Text(
+                    text = stringResource(
+                        if (s.countdown == SosKind.FALL) R.string.countdown_fall
+                        else if (s.countdown == SosKind.PANIC) R.string.countdown_panic
+                        else R.string.sos_sending
+                    ),
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.5).sp,
+                    color = Color.White
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = stringResource(
+                        if (isAutoCountdown) R.string.countdown_body
+                        else R.string.sos_sending_desc,
+                        secondsToDisplay
+                    ),
+                    fontSize = 16.sp,
+                    color = Color.White.copy(alpha = 0.85f),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 22.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(290.dp)
+                        .padding(top = 20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        if (!still) {
+                            val minR = 65.dp.toPx()
+                            val maxR = 175.dp.toPx()
+                            for (step in 0..2) {
+                                val phase = (ripPhase + step * 0.333f) % 1f
+                                val currentR = minR + (maxR - minR) * phase
+                                val alpha = (1f - phase) * 0.75f
+                                drawCircle(
+                                    color = Color.White.copy(alpha = alpha),
+                                    radius = currentR,
+                                    style = Stroke(width = 2.dp.toPx())
+                                )
+                            }
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(130.dp)
+                            .graphicsLayer {
+                                scaleX = popScale.value
+                                scaleY = popScale.value
+                            }
+                            .shadow(16.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(Color.White),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        KIcon(KI.CHECK, tint = Color(0xFFD1241A), size = 68.dp)
+                    }
+                }
+
+                Spacer(Modifier.height(30.dp))
+
+                Text(
+                    text = stringResource(R.string.sos_sent_title),
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-1).sp,
+                    color = Color.White
+                )
+
+                Spacer(Modifier.height(8.dp))
+
+                Text(
+                    text = stringResource(R.string.sos_sent_desc),
+                    fontSize = 17.sp,
+                    color = Color.White.copy(alpha = 0.9f),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 24.sp,
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                )
+
+                if (s.sosWaitingForGps && s.now - s.lastSosAt < 600_000) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.sos_no_gps),
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.8f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+
+                for (r in s.mySosResponders) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(R.string.help_coming_body, r),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF30D158),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            Spacer(Modifier.weight(1f))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(Color(0x38FFFFFF))
+                    .border(1.dp, Color(0x4DFFFFFF), RoundedCornerShape(32.dp))
+                    .pressFeedback()
+                    .clickable {
+                        if (isDone) {
+                            mesh.stopSiren()
+                        } else if (isAutoCountdown) {
+                            mesh.cancelCountdown()
+                        }
+                        onDismiss()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(
+                        if (isDone) R.string.stop_siren
+                        else if (isAutoCountdown) R.string.cancel_sos
+                        else R.string.cancel
+                    ),
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Spacer(Modifier.height(10.dp))
         }
     }
 }

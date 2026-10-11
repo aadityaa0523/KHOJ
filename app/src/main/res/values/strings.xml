@@ -74,6 +74,11 @@
     <string name="countdown_panic">Panic signal</string>
     <string name="countdown_body">Calling for help in %1$d seconds</string>
     <string name="cancel_sos">I\'M OK</string>
+    <string name="sos_sending">Sending SOS</string>
+    <string name="sos_sending_desc">The siren starts and your family gets your location.</string>
+    <string name="sos_sent_title">SOS sent</string>
+    <string name="sos_sent_desc">The siren is on and your family\'s phones have your location.</string>
+    <string name="cancel">Cancel</string>
     <string name="tts_fall">Are you okay? Help will be called in ten seconds. Press I am OK to stop.</string>
     <string name="tts_panic">Help will be called in ten seconds. Press I am OK if this was a mistake.</string>
 
