@@ -251,4 +251,10 @@
     <string name="activity_hint">Message</string>
     <string name="activity_send">Send</string>
     <string name="pass_label">KHOJ \u00b7 FAMILY PASS</string>
+
+    <!-- Simple mode and tab names -->
+    <string name="simple_mode">Simple mode</string>
+    <string name="simple_mode_desc">Big faces to tap and one big SOS button. Other tabs stay below.</string>
+    <string name="simple_tap">tap to find</string>
+    <string name="simple_far">far away</string>
 </resources>

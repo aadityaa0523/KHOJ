@@ -191,4 +191,16 @@
     <string name="activity_hint">செய்தி</string>
     <string name="activity_send">அனுப்பு</string>
     <string name="pass_label">KHOJ · குடும்ப பாஸ்</string>
+
+    <!-- Simple mode, tabs -->
+    <string name="simple_mode">எளிய பயன்முறை</string>
+    <string name="simple_mode_desc">பெரிய முகங்கள், ஒரு பெரிய SOS பொத்தான். மற்ற டேப்கள் கீழே இருக்கும்.</string>
+    <string name="simple_tap">தேட தட்டவும்</string>
+    <string name="simple_far">தொலைவில்</string>
+    <string name="tab_radar">அருகில்</string>
+    <string name="tab_group">குழு</string>
+    <string name="tab_help">உதவி</string>
+    <string name="tab_board">SOS பலகை</string>
+    <string name="tab_scan">ஸ்கேன்</string>
+    <string name="tab_alerts">எச்சரிக்கைகள்</string>
 </resources>

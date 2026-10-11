@@ -464,7 +464,7 @@ fun HelpTab(s: MeshUiState, mesh: MeshController, onScanBand: () -> Unit, onBand
 // ------------------------------------------------------------------ settings tab
 
 @Composable
-fun SettingsTab(s: MeshUiState, mesh: MeshController, night: Boolean, onNight: (Boolean) -> Unit, onScanFamily: () -> Unit, onScanPolice: () -> Unit, onBatteryGuidance: () -> Unit = {}, onAdvanced: () -> Unit) {
+fun SettingsTab(s: MeshUiState, mesh: MeshController, night: Boolean, onNight: (Boolean) -> Unit, simple: Boolean, onSimple: (Boolean) -> Unit, onScanFamily: () -> Unit, onScanPolice: () -> Unit, onBatteryGuidance: () -> Unit = {}, onAdvanced: () -> Unit) {
     val context = LocalContext.current
     val p = LocalCall.current
     TabPage(stringResource(R.string.settings)) {
@@ -485,6 +485,8 @@ fun SettingsTab(s: MeshUiState, mesh: MeshController, night: Boolean, onNight: (
                 SegmentedControl(listOf(false, true), night, onNight, label = { if (it) context.getString(R.string.theme_night) else context.getString(R.string.theme_day) })
             }
         }
+
+        Glass(Modifier.fillMaxWidth()) { SettingRow(stringResource(R.string.simple_mode), stringResource(R.string.simple_mode_desc), simple, onSimple) }
 
         Glass(Modifier.fillMaxWidth()) {
             SettingRow(stringResource(R.string.pendant_mode), stringResource(R.string.pendant_desc), s.pendant, mesh::setPendant)

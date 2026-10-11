@@ -191,4 +191,16 @@
     <string name="activity_hint">संदेश</string>
     <string name="activity_send">भेजें</string>
     <string name="pass_label">KHOJ · परिवार पास</string>
+
+    <!-- Simple mode, tabs -->
+    <string name="simple_mode">सरल मोड</string>
+    <string name="simple_mode_desc">बड़े चेहरे और एक बड़ा SOS बटन। बाकी टैब नीचे रहते हैं।</string>
+    <string name="simple_tap">खोजने के लिए दबाएँ</string>
+    <string name="simple_far">दूर हैं</string>
+    <string name="tab_radar">आसपास</string>
+    <string name="tab_group">समूह</string>
+    <string name="tab_help">मदद</string>
+    <string name="tab_board">SOS बोर्ड</string>
+    <string name="tab_scan">स्कैन</string>
+    <string name="tab_alerts">अलर्ट</string>
 </resources>

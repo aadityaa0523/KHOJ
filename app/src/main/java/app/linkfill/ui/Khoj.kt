@@ -153,6 +153,8 @@ fun KhojApp(s: MeshUiState, mesh: MeshController, onAdvanced: () -> Unit) {
     val prefs = remember { context.getSharedPreferences("mesh", Context.MODE_PRIVATE) }
     var night by rememberSaveable { mutableStateOf(prefs.getBoolean("night", false)) }
     val setNight = { on: Boolean -> night = on; prefs.edit().putBoolean("night", on).apply() }
+    var simple by rememberSaveable { mutableStateOf(prefs.getBoolean("simple_mode", false)) }
+    val setSimple = { on: Boolean -> simple = on; prefs.edit().putBoolean("simple_mode", on).apply() }
     CallTheme(night) {
         var splash by rememberSaveable { mutableStateOf(true) }
         if (splash) { Splash { splash = false }; return@CallTheme }
@@ -160,12 +162,12 @@ fun KhojApp(s: MeshUiState, mesh: MeshController, onAdvanced: () -> Unit) {
         LaunchedEffect(s.setupDone) { if (!s.running && missingPermissions(context).isEmpty()) mesh.start() }
         if (s.countdown != null) { SosScreen(s, mesh, onDismiss = mesh::cancelCountdown); return@CallTheme }
         s.lit?.let { LitScreen(it, onStop = mesh::stopLight); return@CallTheme }
-        AlarmBeat(s.alerts) { Main(s, mesh, night, setNight, onAdvanced) }
+        AlarmBeat(s.alerts) { Main(s, mesh, night, setNight, simple, setSimple, onAdvanced) }
     }
 }
 
 @Composable
-private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onAdvanced: () -> Unit) {
+private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, simple: Boolean, setSimple: (Boolean) -> Unit, onAdvanced: () -> Unit) {
     val context = LocalContext.current
     val tabs = if (s.role == Role.MEMBER) MEMBER_TABS else HELPER_TABS
     var tab by rememberSaveable { mutableStateOf(tabs.first()) }
@@ -215,7 +217,9 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
         KSub.SOS -> SosScreen(s, mesh, onDismiss = ::home)
         KSub.NONE -> Shell(s, mesh, tabs, tab, { tab = it }, onOpenSos = { sub = KSub.SOS }, findUi = findUi, onOpenFind = { sub = KSub.FIND }, onStopFind = { mesh.stopFind() }) {
             when (tab) {
-                Tab.RADAR -> NearbyScreen(s, mesh, findUi?.targetId, setNight, onFind = ::startFinding, onSos = { sub = KSub.SOS }, onRewind = { sub = KSub.REWIND },
+                Tab.RADAR -> if (simple) SimpleHome(s, mesh, setNight, onFind = ::startFinding, onSos = { sub = KSub.SOS },
+                    onOpen = { t -> when (t) { app.linkfill.core.voice.VoiceTarget.GROUP -> tab = Tab.GROUP; app.linkfill.core.voice.VoiceTarget.SETTINGS -> tab = Tab.SETTINGS; app.linkfill.core.voice.VoiceTarget.BANDS -> sub = KSub.BANDS; app.linkfill.core.voice.VoiceTarget.REWIND -> sub = KSub.REWIND; app.linkfill.core.voice.VoiceTarget.RADAR -> tab = Tab.RADAR } })
+                else NearbyScreen(s, mesh, findUi?.targetId, setNight, onFind = ::startFinding, onSos = { sub = KSub.SOS }, onRewind = { sub = KSub.REWIND },
                     onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE },
                     onOpen = { t -> when (t) { app.linkfill.core.voice.VoiceTarget.GROUP -> tab = Tab.GROUP; app.linkfill.core.voice.VoiceTarget.SETTINGS -> tab = Tab.SETTINGS; app.linkfill.core.voice.VoiceTarget.BANDS -> sub = KSub.BANDS; app.linkfill.core.voice.VoiceTarget.REWIND -> sub = KSub.REWIND; app.linkfill.core.voice.VoiceTarget.RADAR -> tab = Tab.RADAR } })
                 Tab.ACTIVITY -> ActivityTab(s, mesh, night, setNight, onFind = ::startFinding, onSos = { sub = KSub.SOS }, onRewind = { sub = KSub.REWIND },
@@ -225,7 +229,7 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
                 Tab.BOARD -> BoardTab(s, mesh, night, setNight)
                 Tab.SCAN -> HelperScanTab(s, mesh, onScanBand = { scan(KSub.SCAN_BAND) })
                 Tab.ALERTS -> HelperAlertsTab(s, mesh)
-                Tab.SETTINGS -> SettingsTab(s, mesh, night, setNight, onScanFamily = { scan(KSub.SCAN_FAMILY) }, onScanPolice = { scan(KSub.SCAN_POLICE) }, onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE }, onAdvanced = onAdvanced)
+                Tab.SETTINGS -> SettingsTab(s, mesh, night, setNight, simple, setSimple, onScanFamily = { scan(KSub.SCAN_FAMILY) }, onScanPolice = { scan(KSub.SCAN_POLICE) }, onBatteryGuidance = { sub = KSub.BATTERY_GUIDANCE }, onAdvanced = onAdvanced)
             }
         }
     }
