@@ -99,7 +99,7 @@ data class Notice(val at: Long, val lat: Double, val lon: Double, val text: Stri
 data class MeetPoint(val lat: Double, val lon: Double, val label: String, val from: String, val at: Long)
 
 /** Someone in the group asked this phone to light up: who, which of LIGHT_TORCH/SCREEN/SOUND, and when it switches itself off. */
-data class LitState(val by: String, val modes: Int, val endsAt: Long)
+data class LitState(val by: String, val modes: Int, val endsAt: Long, val self: Boolean = false)
 
 /** Big-banner alerts on the home screen. */
 data class HomeAlert(val key: String, val title: String, val body: String, val kind: String, val lat: Double? = null, val lon: Double? = null, val at: Long)
@@ -623,15 +623,17 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         applyTransports() // an urgent request needs the fast radios now
     }
 
-    private fun startLight(by: String, modes: Int, durS: Int, now: Long) {
+    /** Lights up this phone itself, so the owner can be spotted in a crowd. No permission switch applies: it is the owner's own choice. */
+    fun lightSelf(modes: Int, durS: Int) = startLight("", modes and 7, durS.coerceIn(MeshMessage.LIGHT_MIN_S, MeshMessage.LIGHT_MAX_S), System.currentTimeMillis(), self = true)
+
+    private fun startLight(by: String, modes: Int, durS: Int, now: Long, self: Boolean = false) {
         lastLightAt = now
         val torch = modes and MeshMessage.LIGHT_TORCH != 0
         val sound = modes and MeshMessage.LIGHT_SOUND != 0
         if (!_state.value.sirenOn && (torch || sound)) { siren.stop(); siren.start(sound = sound, flash = torch, simpleBlink = true) }
         buzz(SOS_PATTERN)
-        val title = context.getString(R.string.light_lit_title, by)
-        notify(title, context.getString(R.string.light_lit_body))
-        _state.update { it.copy(lit = LitState(by, modes, now + durS * 1000L)) }
+        if (!self) notify(context.getString(R.string.light_lit_title, by), context.getString(R.string.light_lit_body))
+        _state.update { it.copy(lit = LitState(by, modes, now + durS * 1000L, self)) }
     }
 
     fun stopLight() {

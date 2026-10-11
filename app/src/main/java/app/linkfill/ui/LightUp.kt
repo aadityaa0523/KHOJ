@@ -49,7 +49,7 @@ private val DURATIONS_S = listOf(30, 60, 300)
 
 /** Asks a family member's phone to light up. The sender picks torch, bright screen and sound, and how long. */
 @Composable
-fun LightUpDialog(name: String, onSend: (modes: Int, durS: Int) -> Unit, onDismiss: () -> Unit) {
+fun LightUpDialog(name: String, onSend: (modes: Int, durS: Int) -> Unit, onDismiss: () -> Unit, self: Boolean = false) {
     var modes by rememberSaveable { mutableIntStateOf(MeshMessage.LIGHT_TORCH or MeshMessage.LIGHT_SCREEN) }
     var dur by rememberSaveable { mutableIntStateOf(60) }
     val p = LocalCall.current
@@ -60,10 +60,10 @@ fun LightUpDialog(name: String, onSend: (modes: Int, durS: Int) -> Unit, onDismi
     )
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.light_dialog_title, name)) },
+        title = { Text(if (self) stringResource(R.string.light_self_dialog_title) else stringResource(R.string.light_dialog_title, name)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(stringResource(R.string.light_dialog_sub), style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
+                Text(stringResource(if (self) R.string.light_self_dialog_sub else R.string.light_dialog_sub), style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
                 for ((bit, label) in opts) {
                     val on = modes and bit != 0
                     Row(
@@ -85,7 +85,7 @@ fun LightUpDialog(name: String, onSend: (modes: Int, durS: Int) -> Unit, onDismi
                 }
             }
         },
-        confirmButton = { TextButton({ onSend(modes, dur) }, enabled = modes != 0, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.light_send, name)) } },
+        confirmButton = { TextButton({ onSend(modes, dur) }, enabled = modes != 0, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (self) stringResource(R.string.light_self_send) else stringResource(R.string.light_send, name)) } },
         dismissButton = { TextButton(onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.light_cancel)) } },
     )
 }
@@ -124,11 +124,11 @@ fun LitScreen(lit: LitState, onStop: () -> Unit) {
                 Modifier.fillMaxWidth().background(Color(0xE0080810), RoundedCornerShape(28.dp)).padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.light_lit_title, lit.by), style = MaterialTheme.typography.headlineMedium, color = Color.White, textAlign = TextAlign.Center)
-                Text(stringResource(R.string.light_lit_body), style = MaterialTheme.typography.bodyLarge, color = Color(0xCCFFFFFF), textAlign = TextAlign.Center)
+                Text(if (lit.self) stringResource(R.string.light_self_title) else stringResource(R.string.light_lit_title, lit.by), style = MaterialTheme.typography.headlineMedium, color = Color.White, textAlign = TextAlign.Center)
+                Text(stringResource(if (lit.self) R.string.light_self_body else R.string.light_lit_body), style = MaterialTheme.typography.bodyLarge, color = Color(0xCCFFFFFF), textAlign = TextAlign.Center)
             }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                CallButton(stringResource(R.string.light_see), onStop, modifier = Modifier.fillMaxWidth())
+                if (!lit.self) CallButton(stringResource(R.string.light_see), onStop, modifier = Modifier.fillMaxWidth())
                 CallButton(stringResource(R.string.light_off), onStop, modifier = Modifier.fillMaxWidth(), tone = Tone.QUIET)
             }
         }

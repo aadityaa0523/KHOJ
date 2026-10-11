@@ -208,4 +208,10 @@
     <string name="voice_left">%1$s is to your left, about %2$d steps.</string>
     <string name="voice_right">%1$s is to your right, about %2$d steps.</string>
     <string name="voice_mic">Voice</string>
+    <string name="light_self_button">Light up my phone</string>
+    <string name="light_self_dialog_title">Light up my phone</string>
+    <string name="light_self_dialog_sub">So the people looking for you can spot you. Hold your phone up.</string>
+    <string name="light_self_send">Light up</string>
+    <string name="light_self_title">Your phone is lit</string>
+    <string name="light_self_body">Hold it up so people can see you. Tap Turn off when you are found.</string>
 </resources>
