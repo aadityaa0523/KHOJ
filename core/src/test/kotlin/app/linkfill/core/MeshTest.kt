@@ -73,12 +73,20 @@ class MeshTest {
             MeshMessage.Text("hello"),
             MeshMessage.Ack(5, 6),
             MeshMessage.Looking(-123456),
+            MeshMessage.Light(-123456, 7, 60),
         )) {
             val (type, bytes) = MeshMessage.encode(m)
             val back = MeshMessage.decode(type, bytes)
             if (m is MeshMessage.Beacon && back is MeshMessage.Beacon) {
                 assertEquals(m.lat, back.lat, 1e-6); assertEquals(m.name, back.name)
             } else assertEquals(m, back)
+        }
+    }
+
+    @Test fun lightRequestsOutsideTheSafeRangeAreRejected() {
+        for ((modes, dur) in listOf(0 to 60, 8 to 60, 1 to 4, 1 to 301)) {
+            val (type, bytes) = MeshMessage.encode(MeshMessage.Light(1, modes, dur))
+            assertNull("modes=$modes dur=$dur", MeshMessage.decode(type, bytes))
         }
     }
 

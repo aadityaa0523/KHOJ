@@ -98,6 +98,9 @@ data class Notice(val at: Long, val lat: Double, val lon: Double, val text: Stri
 /** The family's current meeting point (the most recent rally, from anyone in the crew or from me). */
 data class MeetPoint(val lat: Double, val lon: Double, val label: String, val from: String, val at: Long)
 
+/** Someone in the group asked this phone to light up: who, which of LIGHT_TORCH/SCREEN/SOUND, and when it switches itself off. */
+data class LitState(val by: String, val modes: Int, val endsAt: Long)
+
 /** Big-banner alerts on the home screen. */
 data class HomeAlert(val key: String, val title: String, val body: String, val kind: String, val lat: Double? = null, val lon: Double? = null, val at: Long)
 
@@ -151,6 +154,9 @@ data class MeshUiState(
     val lastSosAt: Long = 0,
     /** The SOS siren is sounding on this phone. */
     val sirenOn: Boolean = false,
+    /** Family may light this phone up (torch, bright screen, sound). On by default; only the crew can ask, and the owner can stop it at once. */
+    val allowLight: Boolean = true,
+    val lit: LitState? = null,
     /** Alarm when a group member is farther than this (GPS error allowed for). */
     val circleM: Int = app.linkfill.core.find.Circle.DEFAULT_M,
     /** User asked for battery-saver membership; [lowPower] is whether it is in effect now (also automatic on low battery). */
@@ -257,6 +263,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
             trustAngle = prefs.getBoolean("trust_angle", false),
             circleM = prefs.getInt("circle_m", app.linkfill.core.find.Circle.DEFAULT_M),
             batterySaver = prefs.getBoolean("battery_saver", false),
+            allowLight = prefs.getBoolean("allow_light", true),
         ),
     )
     val state: StateFlow<MeshUiState> = _state.asStateFlow()
@@ -544,7 +551,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
                 if (n % 120 == 60L && _state.value.myFix.let { it == null || now - it.fixTimeMs > 30_000 }) { location.stop(); startLocation() }
                 // Two-way navigator: while I am finding someone, tell them every 10 s so they can navigate back to me.
                 if (n % 40 == 20L && r.crew != null) find.activeTarget?.let { r.originate(MeshMessage.Looking(it), now) }
-                if (n % 4 == 0L) { sampleLinks(r, now); checkLostContact(now) } // every 1 s
+                if (n % 4 == 0L) { sampleLinks(r, now); checkLostContact(now); _state.value.lit?.let { if (now >= it.endsAt) stopLight() } } // every 1 s
                 if (n % 2 == 0L) publish(r, now)
                 n++
                 delay(250)
@@ -574,7 +581,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         heading.stop()
         router = null; labeler = null
         context.stopService(Intent(context, MeshService::class.java))
-        _state.update { it.copy(running = false, countdown = null, rewindFrames = 0, sirenOn = false) }
+        _state.update { it.copy(running = false, countdown = null, rewindFrames = 0, sirenOn = false, lit = null) }
     }
 
     /** (Re)starts the foreground service with the right types: camera only while Rewind is actually running. */
@@ -600,6 +607,36 @@ class MeshController(private val context: Context, private val scope: CoroutineS
         if (router == null) start()
         router?.let { updatePower(it, System.currentTimeMillis()) }
         broadcastSos(kind)
+    }
+
+    private var lastLightAt = 0L
+
+    fun setAllowLight(on: Boolean) { prefs.edit().putBoolean("allow_light", on).apply(); _state.update { it.copy(allowLight = on) }; if (!on) stopLight() }
+
+    /** Asks the crew member [targetId] to light up. The target obeys only if it allowed it; there is no reply, so the screen says "sent", not "lit". */
+    fun sendLight(targetId: Int, modes: Int, durS: Int, name: String) {
+        val r = router ?: return _state.update { it.copy(error = context.getString(R.string.sos_no_mesh)) }
+        if (r.crew == null) return _state.update { it.copy(error = "Join a crew first.") }
+        val now = System.currentTimeMillis()
+        r.originate(MeshMessage.Light(targetId, modes and 7, durS.coerceIn(MeshMessage.LIGHT_MIN_S, MeshMessage.LIGHT_MAX_S)), now)
+        addFeed(FeedItem(now, "You", context.getString(R.string.light_sent_feed, name), "TEXT", 0, mine = true))
+        applyTransports() // an urgent request needs the fast radios now
+    }
+
+    private fun startLight(by: String, modes: Int, durS: Int, now: Long) {
+        lastLightAt = now
+        val torch = modes and MeshMessage.LIGHT_TORCH != 0
+        val sound = modes and MeshMessage.LIGHT_SOUND != 0
+        if (!_state.value.sirenOn && (torch || sound)) { siren.stop(); siren.start(sound = sound, flash = torch, simpleBlink = true) }
+        buzz(SOS_PATTERN)
+        val title = context.getString(R.string.light_lit_title, by)
+        notify(title, context.getString(R.string.light_lit_body))
+        _state.update { it.copy(lit = LitState(by, modes, now + durS * 1000L)) }
+    }
+
+    fun stopLight() {
+        if (!_state.value.sirenOn) siren.stop()
+        _state.update { it.copy(lit = null) }
     }
 
     fun stopSiren() { siren.stop(); _state.update { it.copy(sirenOn = false) } }
@@ -769,6 +806,7 @@ class MeshController(private val context: Context, private val scope: CoroutineS
             }
             is MeshMessage.Text -> addFeed(FeedItem(now, name, message.text, "TEXT", hops, mine = false))
             is MeshMessage.Ack -> Unit
+            is MeshMessage.Light -> if (message.targetId == router?.nodeId && _state.value.allowLight && ageS <= 60 && now - lastLightAt > 3_000) startLight(name, message.modes, message.durS, now)
             is MeshMessage.Looking -> if (message.targetId == router?.nodeId) {
                 beaconPeriodMs = 3_000L
                 if (seekers.put(originId, now) == null) { notify(context.getString(R.string.looking_for_you, name), context.getString(R.string.looking_for_you_body)); applyTransports() }

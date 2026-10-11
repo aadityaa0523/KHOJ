@@ -157,6 +157,7 @@ fun KhojApp(s: MeshUiState, mesh: MeshController, onAdvanced: () -> Unit) {
         if (!s.setupDone) { SetupFlow(s, mesh); return@CallTheme }
         LaunchedEffect(s.setupDone) { if (!s.running && missingPermissions(context).isEmpty()) mesh.start() }
         if (s.countdown != null) { SosScreen(s, mesh, onDismiss = mesh::cancelCountdown); return@CallTheme }
+        s.lit?.let { LitScreen(it, onStop = mesh::stopLight); return@CallTheme }
         AlarmBeat(s.alerts) { Main(s, mesh, night, setNight, onAdvanced) }
     }
 }
@@ -197,7 +198,8 @@ private fun Main(s: MeshUiState, mesh: MeshController, night: Boolean, setNight:
     val badCode = stringResource(R.string.bad_code)
     when (sub) {
         KSub.FIND -> FindScreen(findUi, onStop = { mesh.stopFind(); home() }, needRangingPermission = Build.VERSION.SDK_INT >= 36 && context.checkSelfPermission(Manifest.permission.RANGING) != PackageManager.PERMISSION_GRANTED,
-            onAllowRanging = { ranging.launch(Manifest.permission.RANGING) }, onTrustAngle = mesh::setTrustAngle, onGroundTruth = mesh::setGroundTruth)
+            onAllowRanging = { ranging.launch(Manifest.permission.RANGING) }, onTrustAngle = mesh::setTrustAngle, onGroundTruth = mesh::setGroundTruth,
+            onLight = { m, d -> findUi?.let { f -> mesh.sendLight(f.targetId, m, d, f.targetName) } })
         KSub.SCAN_BAND -> ScanPage(stringResource(R.string.scan_band), scanMsg ?: stringResource(R.string.scan_hint), ::home) { text ->
             if (Band.parse(text) != null) { bandText = text; mesh.rewind.resume(); sub = KSub.FOUND_BAND } else scanMsg = notBand
         }

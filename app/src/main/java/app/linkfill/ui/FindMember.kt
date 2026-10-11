@@ -110,8 +110,9 @@ private fun fieldHeat(p: CallPalette, distanceM: Double?, prox: Proximity?): Col
  * it does know (distance, closeness, a last position) and says why the rest is withheld.
  */
 @Composable
-fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, onAllowRanging: () -> Unit, onTrustAngle: (Boolean) -> Unit, onGroundTruth: (Double?) -> Unit) {
+fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, onAllowRanging: () -> Unit, onTrustAngle: (Boolean) -> Unit, onGroundTruth: (Double?) -> Unit, onLight: (Int, Int) -> Unit = { _, _ -> }) {
     val p = LocalCall.current
+    var askLight by remember { mutableStateOf(false) }
     if (ui == null) { CallPage(stringResource(R.string.find_mode_none), onStop) {}; return }
     val s = ui.state
     val hot = fieldHeat(p, s.distanceM, s.proximity)
@@ -122,6 +123,7 @@ fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, 
     val periodMs = when { dist != null -> (900 + (dist.coerceIn(2.0, 150.0) / 150.0 * 2300)).toInt(); s.proximity == Proximity.VERY_CLOSE -> 900; s.proximity == Proximity.NEAR -> 1500; else -> 3200 }
     val phase = if (still || hot == null) null else rememberInfiniteTransition(label = "find").animateFloat(0f, 1f, infiniteRepeatable(tween(periodMs, easing = LinearEasing), RepeatMode.Restart), label = "pulse")
 
+    if (askLight) LightUpDialog(ui.targetName, onSend = { m, d -> onLight(m, d); askLight = false }, onDismiss = { askLight = false })
     Box(Modifier.fillMaxSize().background(p.ground)) {
         Canvas(Modifier.fillMaxSize()) {
             val c = Offset(size.width / 2, size.height * 0.36f)
@@ -148,6 +150,7 @@ fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, 
                 if (needRangingPermission) { Spacer(Modifier.height(8.dp)); CallButton(stringResource(R.string.find_allow_ranging), onAllowRanging, icon = KI.RADAR) }
             }
             Sources(ui, onTrustAngle, onGroundTruth)
+            CallButton(stringResource(R.string.light_button), { askLight = true }, tone = Tone.QUIET, icon = KI.SIREN)
             CallButton(stringResource(R.string.find_stop), onStop, tone = Tone.QUIET, icon = KI.CLOSE)
             Spacer(Modifier.height(20.dp))
         }

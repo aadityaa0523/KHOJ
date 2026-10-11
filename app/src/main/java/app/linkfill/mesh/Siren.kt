@@ -27,7 +27,9 @@ class Siren(private val context: Context) {
     private var flashing = false
     private var step = 0
     /** On/off durations in ms, starting with "on": S (dot dot dot), O (dash dash dash), S, then a pause before it repeats. */
-    private val morse = longArrayOf(200, 200, 200, 200, 200, 600, 600, 200, 600, 200, 600, 600, 200, 200, 200, 200, 200, 1500)
+    private val morse0 = longArrayOf(200, 200, 200, 200, 200, 600, 600, 200, 600, 200, 600, 600, 200, 200, 200, 200, 200, 1500)
+
+    private var pattern = morse0
 
     private val torchCamera: String? by lazy { findTorch() }
     private fun torchId() = torchCamera
@@ -43,14 +45,15 @@ class Siren(private val context: Context) {
             if (!flashing) return
             val id = torchId() ?: return
             torch(id, step % 2 == 0) // even steps are "on"
-            val d = morse[step % morse.size]
+            val d = pattern[step % pattern.size]
             step++
             handler.postDelayed(this, d)
         }
     }
 
     /** Starts the blinking alone (used by the debug preview to test the flash without sound or sending anything). */
-    fun startFlash() { if (flashing) return; flashing = true; step = 0; handler.post(blink) }
+    /** [simple]: a slow even blink (0.5 s on, 0.5 s off) for "light up so I can find you", instead of the SOS pattern. */
+    fun startFlash(simple: Boolean = false) { if (flashing) return; pattern = if (simple) longArrayOf(500, 500) else morse0; flashing = true; step = 0; handler.post(blink) }
 
     fun stopFlash() {
         flashing = false; handler.removeCallbacks(blink)
@@ -62,8 +65,8 @@ class Siren(private val context: Context) {
     private var savedVolume = -1
     val playing get() = track != null
 
-    fun start(sound: Boolean = true) {
-        startFlash()
+    fun start(sound: Boolean = true, flash: Boolean = true, simpleBlink: Boolean = false) {
+        if (flash) startFlash(simpleBlink)
         if (!sound || track != null) return
         val rate = 22_050
         val pcm = ShortArray(rate * 2) // one 2 s wail: 650 Hz up to 1500 Hz and back

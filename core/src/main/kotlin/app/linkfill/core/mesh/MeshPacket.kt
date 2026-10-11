@@ -14,7 +14,8 @@ enum class MeshType(val code: Int) {
     // Public messages (see PublicMessage): not sealed with a crew key.
     FOUND(7), FOUND_ACK(8), PUBLIC_SOS(9), RESPOND(10), OFFICIAL(11), FOUND_NOTICE(12),
     LOOKING(13), // crew: "I am trying to find <member>", so they can navigate back to me
-    SUMMARY(14); // anti-entropy cache summary for store-carry-forward healing (Phase 5)
+    SUMMARY(14), // anti-entropy cache summary for store-carry-forward healing (Phase 5)
+    LIGHT(15);   // crew: "turn on your torch / screen / sound so I can spot you" (only the target obeys, and only if it allowed it)
 
     companion object { fun of(code: Int) = entries.firstOrNull { it.code == code } }
 }
@@ -137,9 +138,16 @@ sealed interface MeshMessage {
     data class Ack(val originId: Int, val packetId: Int) : MeshMessage
     /** The sender is looking for the crew member whose current node id is [targetId]. */
     data class Looking(val targetId: Int) : MeshMessage
+    /** Ask the crew member whose node id is [targetId] to light up: [modes] is a bit set of [LIGHT_TORCH], [LIGHT_SCREEN], [LIGHT_SOUND] for [durS] seconds. */
+    data class Light(val targetId: Int, val modes: Int, val durS: Int) : MeshMessage
 
     companion object {
         private const val MAX_TEXT = 100
+        const val LIGHT_TORCH = 1
+        const val LIGHT_SCREEN = 2
+        const val LIGHT_SOUND = 4
+        const val LIGHT_MIN_S = 5
+        const val LIGHT_MAX_S = 300
 
         fun encode(m: MeshMessage): Pair<MeshType, ByteArray> = when (m) {
             is Beacon -> MeshType.BEACON to buf(4 + 4 + 2 + 1 + 1, m.name) { putLatLon(m.lat, m.lon); putShort(m.accuracyM.coerceIn(0, 65_535).toShort()); put(m.battery.coerceIn(0, 100).toByte()); put(if (m.findable) 1 else 0) }
@@ -148,6 +156,7 @@ sealed interface MeshMessage {
             is Text -> MeshType.TEXT to buf(0, m.text) {}
             is Ack -> MeshType.ACK to ByteBuffer.allocate(8).putInt(m.originId).putInt(m.packetId).array()
             is Looking -> MeshType.LOOKING to ByteBuffer.allocate(4).putInt(m.targetId).array()
+            is Light -> MeshType.LIGHT to ByteBuffer.allocate(7).putInt(m.targetId).put(m.modes.toByte()).putShort(m.durS.toShort()).array()
         }
 
         fun decode(type: MeshType, b: ByteArray): MeshMessage? = try {
@@ -165,6 +174,7 @@ sealed interface MeshMessage {
                 MeshType.TEXT -> Text(bb.rest())
                 MeshType.ACK -> Ack(bb.int, bb.int)
                 MeshType.LOOKING -> Looking(bb.int)
+                MeshType.LIGHT -> Light(bb.int, bb.get().toInt() and 0xFF, bb.short.toInt() and 0xFFFF)
                 else -> null
             }?.takeIf { valid(it) }
         } catch (_: BufferUnderflowException) {
@@ -175,6 +185,7 @@ sealed interface MeshMessage {
             is Beacon -> okLatLon(m.lat, m.lon) && m.battery in 0..100
             is Sos -> okLatLon(m.lat, m.lon)
             is Rally -> okLatLon(m.lat, m.lon)
+            is Light -> m.modes in 1..7 && m.durS in LIGHT_MIN_S..LIGHT_MAX_S
             else -> true
         }
 

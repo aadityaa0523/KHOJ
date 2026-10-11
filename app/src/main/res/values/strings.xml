@@ -166,4 +166,23 @@
     <string-array name="compass">
         <item>N</item><item>NE</item><item>E</item><item>SE</item><item>S</item><item>SW</item><item>W</item><item>NW</item>
     </string-array>
+
+    <!-- Light up -->
+    <string name="light_button">Light up</string>
+    <string name="light_dialog_title">Light up %1$s\'s phone</string>
+    <string name="light_dialog_sub">Make their phone easy to spot. It works only if they allowed it and the phone is in range or reachable through family phones.</string>
+    <string name="light_torch">Torch</string>
+    <string name="light_screen">Bright screen</string>
+    <string name="light_sound">Sound</string>
+    <string name="light_for">Keep it on for</string>
+    <string name="light_send">Light up %1$s</string>
+    <string name="light_cancel">Cancel</string>
+    <string name="light_sent_feed">Asked %1$s\'s phone to light up</string>
+    <string name="light_lit_title">%1$s is looking for you</string>
+    <string name="light_lit_body">Hold your phone up so they can see the light.</string>
+    <string name="light_off">Turn off</string>
+    <string name="light_see">I can see them</string>
+    <string name="light_allow_title">Family can light up my phone</string>
+    <string name="light_allow_desc">Torch, bright screen and sound, only from this group. You can stop it any time. Flashing stays under 3 times a second.</string>
+    <string name="light_section">Light up</string>
 </resources>

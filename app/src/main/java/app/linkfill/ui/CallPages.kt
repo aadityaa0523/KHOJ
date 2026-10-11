@@ -314,6 +314,10 @@ fun GroupTab(s: MeshUiState, mesh: MeshController, onScanFamily: () -> Unit) {
             }
         }
 
+        // (b2) family may light up this phone
+        SectionTitle(stringResource(R.string.light_section))
+        Glass(Modifier.fillMaxWidth()) { SettingRow(stringResource(R.string.light_allow_title), stringResource(R.string.light_allow_desc), s.allowLight, mesh::setAllowLight) }
+
         // (c) the meeting point
         SectionTitle(stringResource(R.string.meet_point))
         s.meetPoint?.let { mp ->

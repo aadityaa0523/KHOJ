@@ -198,7 +198,7 @@ class MeshRouter(
         val priority = when (type) {
             MeshType.SOS -> 0
             MeshType.ACK -> 1
-            MeshType.BEACON, MeshType.RALLY, MeshType.TEXT, MeshType.LOOKING -> 3
+            MeshType.BEACON, MeshType.RALLY, MeshType.TEXT, MeshType.LOOKING, MeshType.LIGHT -> 3
             else -> 4
         }
         if (type == MeshType.BEACON) queue.removeAll { !it.isRelay && it.packet.type == MeshType.BEACON } // only the newest position matters
@@ -369,7 +369,7 @@ class MeshRouter(
                 isMyCrew && p.type == MeshType.ACK -> 1
                 p.type in setOf(MeshType.OFFICIAL, MeshType.FOUND_NOTICE) -> 2
                 !isMyCrew && (p.type == MeshType.SOS || p.type == MeshType.ACK) -> 3
-                p.type in setOf(MeshType.BEACON, MeshType.RALLY, MeshType.TEXT, MeshType.LOOKING) -> 3
+                p.type in setOf(MeshType.BEACON, MeshType.RALLY, MeshType.TEXT, MeshType.LOOKING, MeshType.LIGHT) -> 3
                 else -> 4
             }
             val out = Out(p.relayed(nodeId, 0), 1, now + delay, priority, isRelay = true)
