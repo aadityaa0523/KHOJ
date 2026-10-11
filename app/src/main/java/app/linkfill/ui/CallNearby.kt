@@ -105,7 +105,7 @@ private data class Bubble(val m: CrewMember, val index: Int, val pl: Placed?, va
 @Composable
 fun NearbyScreen(
     s: MeshUiState, mesh: MeshController, findingId: Int?, setNight: (Boolean) -> Unit,
-    onFind: (Int) -> Unit, onSos: () -> Unit, onRewind: () -> Unit, onBatteryGuidance: () -> Unit,
+    onFind: (Int) -> Unit, onSos: () -> Unit, onRewind: () -> Unit,
     onOpen: (VoiceTarget) -> Unit,
 ) {
     val p = LocalCall.current
@@ -211,19 +211,6 @@ fun NearbyScreen(
                 val ordered = bubbles.sortedWith(compareBy<Bubble>({ it.stale }, { it.pl?.distanceM ?: Double.MAX_VALUE }))
                 for ((i, b) in ordered.withIndex()) {
                     FamilyRow(b, s, divider = i > 0) { onFind(b.m.originId) }
-                }
-                if (!s.batteryUnrestricted) Box(Modifier.padding(16.dp)) {
-                    Glass(rim = heatRim(), padding = PaddingValues(14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            KIcon(KI.BATTERY, p.gold, 28.dp); Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(stringResource(R.string.battery_guidance_title), style = MaterialTheme.typography.titleMedium, color = p.ink, fontWeight = FontWeight.Bold)
-                                Text(stringResource(R.string.battery_guidance_summary), style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        CallButton(stringResource(R.string.battery_guidance_btn), onBatteryGuidance, icon = KI.SETTINGS, tone = Tone.HOT)
-                    }
                 }
                 s.meetPoint?.let { mp ->
                     val d = me?.let { GapEstimator.distanceM(it.latitude, it.longitude, mp.lat, mp.lon) }

@@ -26,7 +26,7 @@ class NearbyPreviewActivity : ComponentActivity() {
             batteryUnrestricted = true, now = now,
         )
         setContent {
-            CallTheme(night) { CallBackground { NearbyScreen(state, (application as LinkFillApp).mesh, null, {}, {}, {}, {}, {}, {}) } }
+            CallTheme(night) { CallBackground { NearbyScreen(state, (application as LinkFillApp).mesh, null, {}, {}, {}, {}, {}) } }
         }
     }
 }
