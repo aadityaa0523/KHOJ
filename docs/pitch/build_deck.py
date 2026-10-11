@@ -80,16 +80,17 @@ card(s, 8.9, 4.25, 3.95, 2.25, "Private by design", "Packets are sealed with AES
 text(s, 0.6, 6.8, 11, 0.35, "Tested on 3 real phones. Range and crowd-scale behaviour still need more field testing.", 12, MUTED)
 
 # 4 innovation
-s = slide(4, "Main innovation", "Packet regeneration with on-device AI")
-text(s, 0.6, 1.7, 6.2, 0.5, "The problem", 19, ACC, True)
-text(s, 0.6, 2.15, 6.0, 1.2, "In a dense crowd, Bluetooth packets are lost to collisions and bursts of interference. Today the mesh recovers by retrying.", 15, WHITE)
-text(s, 0.6, 3.3, 6.2, 0.5, "The idea", 19, ACC, True)
-bullets(s, 0.6, 3.8, 6.1, ["A phone that misses a packet rebuilds it from the other packets it did receive (relays from neighbours, and parity).",
-                           "A small model fills the gaps using what it already knows: last position, motion and time.",
-                           "The model is trained on a laptop, then exported and run on the phone's Qualcomm NPU with the QNN delegate."], 14, 0.95)
-card(s, 7.3, 1.8, 5.4, 1.75, "What exists today", "Reed-Solomon recovery in direct sharing: 92.8% delivery vs 54.6% without it on bursty loss (simulation). A loss-predictor model already runs on the NPU path (currently paused).", GREEN, 16, 13)
-card(s, 7.3, 3.75, 5.4, 1.75, "What we are building", "Regeneration inside the mesh itself. This is the design and prototype stage; there are no measured results for it yet.", AMBER, 16, 13)
-card(s, 7.3, 5.7, 5.4, 1.2, "Honest limit", "It improves delivery inside the existing range. It does not extend Bluetooth range.", ACC, 16, 13)
+s = slide(4, "Our innovation", "The mesh heals itself: packet regeneration")
+def arrow(x, y):
+    a = s.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, Inches(x), Inches(y), Inches(0.5), Inches(0.5)); a.fill.solid(); a.fill.fore_color.rgb = ACC; a.line.fill.background()
+card(s, 0.6, 1.8, 3.9, 2.9, "1. What the phone already knows", "Last known location. Timestamp and how old it is. Speed and motion (walking, still). Signal-strength history. Copies of the packet relayed by neighbours.", AMBER, 17, 13)
+arrow(4.6, 2.9)
+card(s, 5.2, 1.8, 3.9, 2.9, "2. On-device AI on the NPU", "A small model trained on a laptop, exported to LiteRT and run on the phone's Qualcomm NPU through the QNN delegate. Fast, private, no internet.", ACC, 17, 13)
+arrow(9.2, 2.9)
+card(s, 9.8, 1.8, 2.95, 2.9, "3. Regenerated packet", "The missing update is rebuilt and tagged regenerated, with a confidence. A real packet replaces it the moment one arrives.", GREEN, 17, 13)
+card(s, 0.6, 4.95, 4.0, 1.85, "Why it matters", "In a crowd, packets drop in bursts. Instead of a family member vanishing from the radar, their last good data fills the gap.", GREEN, 16, 13)
+card(s, 4.75, 4.95, 4.0, 1.85, "Safety rule", "A regenerated position is never shown as live. If the gap passes 20 seconds, KHOJ shows nothing rather than guess.", ACC, 16, 13)
+card(s, 8.9, 4.95, 3.85, 1.85, "Status, honestly", "Design and prototype. Reed-Solomon recovery in direct sharing: 92.8% vs 54.6% (simulation). No measured regeneration results yet. It does not extend range.", AMBER, 16, 12)
 
 # 5 mesh
 s = slide(5, "The mesh", "The crowd becomes the network")
