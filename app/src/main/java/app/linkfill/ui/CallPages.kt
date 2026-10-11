@@ -482,10 +482,7 @@ fun SettingsTab(s: MeshUiState, mesh: MeshController, night: Boolean, onNight: (
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                     )
                 }
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
-                    SegmentedButton(selected = night, onClick = { onNight(true) }, shape = SegmentedButtonDefaults.itemShape(0, 2), icon = {}) { KIcon(KI.MOON, p.ink, 20.dp); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.theme_night)) }
-                    SegmentedButton(selected = !night, onClick = { onNight(false) }, shape = SegmentedButtonDefaults.itemShape(1, 2), icon = {}) { KIcon(KI.SUN, p.ink, 20.dp); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.theme_day)) }
-                }
+                SegmentedControl(listOf(false, true), night, onNight, label = { if (it) context.getString(R.string.theme_night) else context.getString(R.string.theme_day) })
             }
         }
 
@@ -510,23 +507,18 @@ fun SettingsTab(s: MeshUiState, mesh: MeshController, night: Boolean, onNight: (
 @Composable
 private fun ProfilePanel(s: MeshUiState, mesh: MeshController, onScanPolice: () -> Unit) {
     val p = LocalCall.current
-    Glass(Modifier.fillMaxWidth(), rim = heatRim()) {
+    val context = LocalContext.current
+    InsetCard(padding = PaddingValues(16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                HeatDisc(s.name.ifBlank { "?" }, p.gold, 80.dp)
+                MemberAvatar(s.name.ifBlank { "?" }, size = 72.dp)
                 Spacer(Modifier.width(16.dp))
                 OutlinedTextField(s.name, mesh::setName, label = { Text(stringResource(R.string.your_name)) }, singleLine = true, modifier = Modifier.weight(1f))
             }
             Text(stringResource(R.string.i_am), style = MaterialTheme.typography.titleMedium, color = p.ink)
             // One helper role: volunteers, staff, security and police share a screen; the official key only adds signed alerts.
             val helper = s.role != Role.MEMBER
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-                for ((i, isHelper) in listOf(false, true).withIndex()) SegmentedButton(
-                    selected = helper == isHelper,
-                    onClick = { mesh.setRole(if (!isHelper) Role.MEMBER else if (s.policeUnlocked) Role.POLICE else Role.VOLUNTEER) },
-                    shape = SegmentedButtonDefaults.itemShape(i, 2), icon = {},
-                ) { Text(stringResource(if (isHelper) R.string.role_volunteer else R.string.role_member), style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center) }
-            }
+            SegmentedControl(listOf(false, true), helper, { isHelper -> mesh.setRole(if (!isHelper) Role.MEMBER else if (s.policeUnlocked) Role.POLICE else Role.VOLUNTEER) }, label = { context.getString(if (it) R.string.role_volunteer else R.string.role_member) }, height = 56.dp)
             if (s.role == Role.POLICE) Row(verticalAlignment = Alignment.CenterVertically) {
                 KIcon(KI.SHIELD, p.ok, 22.dp); Spacer(Modifier.width(10.dp))
                 Text(stringResource(R.string.role_police), style = MaterialTheme.typography.titleMedium, color = p.ok)

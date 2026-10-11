@@ -473,6 +473,7 @@ fun <T> SegmentedControl(
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
     label: (T) -> String = { it.toString() },
+    height: Dp = 36.dp,
 ) {
     val p = LocalCall.current
     val selectedIndex = items.indexOf(selectedItem).coerceAtLeast(0)
@@ -493,7 +494,7 @@ fun <T> SegmentedControl(
         Box(
             modifier = Modifier
                 .fillMaxWidth(1f / count)
-                .height(36.dp)
+                .height(height)
                 .graphicsLayer {
                     translationX = animatedIndex * (this.size.width)
                 }
@@ -507,7 +508,7 @@ fun <T> SegmentedControl(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp)
+                        .height(height)
                         .pressFeedback()
                         .clickable { onSelect(item) },
                     contentAlignment = Alignment.Center
@@ -518,6 +519,7 @@ fun <T> SegmentedControl(
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                             fontSize = 14.sp
                         ),
+                        maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(horizontal = 6.dp),
                         color = if (isSelected) p.ink else p.inkMuted
                     )
                 }
