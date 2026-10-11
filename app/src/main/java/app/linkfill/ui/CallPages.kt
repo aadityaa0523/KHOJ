@@ -385,8 +385,8 @@ private fun FamilyPass(qr: String, code: String?, s: MeshUiState) {
                 Spacer(Modifier.width(16.dp))
                 code?.let { Text(CrewKey.pretty(it).replace("-", "\n"), fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, fontSize = 16.sp, lineHeight = 24.sp, letterSpacing = 1.sp, color = Color.White) }
             }
-            Row(Modifier.padding(top = 14.dp)) {
-                for ((i, m) in s.members.take(6).withIndex()) Box(Modifier.padding(start = if (i == 0) 0.dp else (-9).dp).border(2.dp, Color(0xFF1A2228), CircleShape)) {
+            Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy((-9).dp)) {
+                for ((i, m) in s.members.take(6).withIndex()) Box(Modifier.border(2.dp, Color(0xFF1A2228), CircleShape)) {
                     MemberAvatar(m.name, colorIndex = i, size = 30.dp)
                 }
             }
