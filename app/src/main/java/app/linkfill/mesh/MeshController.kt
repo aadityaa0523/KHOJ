@@ -628,16 +628,26 @@ class MeshController(private val context: Context, private val scope: CoroutineS
 
     private fun startLight(by: String, modes: Int, durS: Int, now: Long, self: Boolean = false) {
         lastLightAt = now
+        _state.update { it.copy(lit = LitState(by, modes, now + durS * 1000L, self)) }
         val torch = modes and MeshMessage.LIGHT_TORCH != 0
         val sound = modes and MeshMessage.LIGHT_SOUND != 0
-        if (!_state.value.sirenOn && (torch || sound)) { siren.stop(); siren.start(sound = sound, flash = torch, simpleBlink = true) }
+        if (!_state.value.sirenOn && (torch || sound)) {
+            siren.stop()
+            // The Rewind camera holds the back camera open, and Android refuses the torch while it does (measured: dumpsys showed
+            // app.linkfill as an active camera client and the torch stayed dark). Let it go first, and take it back in stopLight.
+            if (torch) rewind.pause()
+            scope.launch {
+                if (torch) delay(500) // the camera is released asynchronously
+                if (_state.value.lit != null) siren.start(sound = sound, flash = torch, simpleBlink = true)
+            }
+        }
         buzz(SOS_PATTERN)
         if (!self) notify(context.getString(R.string.light_lit_title, by), context.getString(R.string.light_lit_body))
-        _state.update { it.copy(lit = LitState(by, modes, now + durS * 1000L, self)) }
     }
 
     fun stopLight() {
         if (!_state.value.sirenOn) siren.stop()
+        rewind.resume()
         _state.update { it.copy(lit = null) }
     }
 
