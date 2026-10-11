@@ -319,7 +319,7 @@ fun GroupTab(s: MeshUiState, mesh: MeshController, onScanFamily: () -> Unit) {
         Glass(Modifier.fillMaxWidth()) { SettingRow(stringResource(R.string.light_allow_title), stringResource(R.string.light_allow_desc), s.allowLight, mesh::setAllowLight) }
         var lightSelf by remember { mutableStateOf(false) }
         if (lightSelf) LightUpDialog("", self = true, onSend = { m, d -> lightSelf = false; mesh.lightSelf(m, d) }, onDismiss = { lightSelf = false })
-        CallButton(stringResource(R.string.light_self_button), { lightSelf = true }, icon = KI.SIREN, tone = Tone.QUIET)
+        CallButton(stringResource(R.string.light_self_button), { lightSelf = true }, icon = KI.BOLT, tone = Tone.QUIET)
 
         // (c) the meeting point
         SectionTitle(stringResource(R.string.meet_point))

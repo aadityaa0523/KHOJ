@@ -177,4 +177,6 @@
     <string name="nearby_last_seen">கடைசியாக</string>
     <string name="mini_finding">%1$s ஐத் தேடுகிறது</string>
     <string name="mini_open">திறக்கத் தட்டவும்</string>
+    <string name="find_steps">சுமார் %1$d அடி</string>
+    <string name="find_plusminus">± %1$d மீ</string>
 </resources>

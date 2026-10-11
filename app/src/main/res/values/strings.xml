@@ -237,4 +237,6 @@
     <string name="nearby_last_seen">last seen</string>
     <string name="mini_finding">Finding %1$s</string>
     <string name="mini_open">Tap to open</string>
+    <string name="find_steps">about %1$d steps</string>
+    <string name="find_plusminus">\u00b1 %1$d m</string>
 </resources>

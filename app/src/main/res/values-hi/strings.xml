@@ -177,4 +177,6 @@
     <string name="nearby_last_seen">आखिरी बार</string>
     <string name="mini_finding">%1$s को खोज रहे हैं</string>
     <string name="mini_open">खोलने के लिए दबाएँ</string>
+    <string name="find_steps">लगभग %1$d कदम</string>
+    <string name="find_plusminus">± %1$d मी</string>
 </resources>

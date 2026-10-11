@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
@@ -128,7 +129,7 @@ fun heatRim(): Brush { val p = LocalCall.current; return Brush.linearGradient(li
 // ------------------------------------------------------------------ icons
 
 /** Line icons drawn on a 24-unit grid, one stroke weight, so the app needs no icon library and no emoji. */
-enum class KI { RADAR, GROUP, HELP, SETTINGS, SUN, MOON, QR, SCAN, BAND, REWIND, PIN, BELL, CHEVRON, SHIELD, PLUS, GLOBE, BATTERY, WALK, CHECK, CLOSE, PHONE, SIREN, MIC }
+enum class KI { RADAR, GROUP, HELP, SETTINGS, SUN, MOON, QR, SCAN, BAND, REWIND, PIN, BELL, CHEVRON, SHIELD, PLUS, GLOBE, BATTERY, WALK, CHECK, CLOSE, PHONE, SIREN, MIC, WARN, BOLT, SPEAKER }
 
 @Composable
 fun KIcon(kind: KI, tint: Color = LocalCall.current.ink, size: Dp = 24.dp, label: String? = null, modifier: Modifier = Modifier) {
@@ -139,7 +140,8 @@ fun KIcon(kind: KI, tint: Color = LocalCall.current.ink, size: Dp = 24.dp, label
         fun line(x1: Float, y1: Float, x2: Float, y2: Float) = drawLine(tint, o(x1, y1), o(x2, y2), 2f * u, StrokeCap.Round)
         fun ring(x: Float, y: Float, r: Float) = drawCircle(tint, r * u, o(x, y), style = st)
         fun dot(x: Float, y: Float, r: Float) = drawCircle(tint, r * u, o(x, y))
-        fun path(block: Path.() -> Unit) = drawPath(Path().apply(block), tint, style = st)
+        // Path coordinates are on the 24-unit grid: scale them (and keep the stroke 2 units wide in that grid).
+        fun path(block: Path.() -> Unit) = withTransform({ scale(u, u, Offset.Zero) }) { drawPath(Path().apply(block), tint, style = Stroke(2f, cap = StrokeCap.Round, join = StrokeJoin.Round)) }
         fun arc(x: Float, y: Float, r: Float, start: Float, sweep: Float) = drawArc(tint, start, sweep, false, o(x - r, y - r), Size(2 * r * u, 2 * r * u), style = st)
         when (kind) {
             KI.RADAR -> { dot(12f, 12f, 2.2f); arc(12f, 12f, 5.5f, 200f, 140f); arc(12f, 12f, 9.5f, 195f, 150f); arc(12f, 12f, 5.5f, 20f, 140f); arc(12f, 12f, 9.5f, 15f, 150f) }
@@ -164,6 +166,9 @@ fun KIcon(kind: KI, tint: Color = LocalCall.current.ink, size: Dp = 24.dp, label
             KI.CLOSE -> { line(6f, 6f, 18f, 18f); line(18f, 6f, 6f, 18f) }
             KI.PHONE -> path { moveTo(6.5f, 3f); lineTo(9.5f, 3.5f); lineTo(11f, 8f); lineTo(8.5f, 9.5f); cubicTo(9.5f, 12f, 12f, 14.5f, 14.5f, 15.5f); lineTo(16f, 13f); lineTo(20.5f, 14.5f); lineTo(21f, 17.5f); cubicTo(21f, 19.5f, 19.5f, 21f, 17.5f, 21f); cubicTo(9f, 20.5f, 3.5f, 15f, 3f, 6.5f); cubicTo(3f, 4.5f, 4.5f, 3f, 6.5f, 3f); close() }
             KI.MIC -> { line(9f, 6f, 9f, 11f); line(15f, 6f, 15f, 11f); arc(12f, 6f, 3f, 180f, 180f); arc(12f, 11f, 3f, 0f, 180f); arc(12f, 11f, 6.5f, 0f, 180f); line(12f, 17.5f, 12f, 21f) }
+            KI.WARN -> { path { moveTo(12f, 3.5f); lineTo(21.5f, 20f); lineTo(2.5f, 20f); close() }; line(12f, 10f, 12f, 14.5f); line(12f, 17.2f, 12f, 17.5f) }
+            KI.BOLT -> path { moveTo(13f, 2.5f); lineTo(4.5f, 14f); lineTo(11f, 14f); lineTo(10f, 21.5f); lineTo(19.5f, 10f); lineTo(13f, 10f); close() }
+            KI.SPEAKER -> { path { moveTo(4f, 9.5f); lineTo(4f, 14.5f); lineTo(7.5f, 14.5f); lineTo(12.5f, 18.5f); lineTo(12.5f, 5.5f); lineTo(7.5f, 9.5f); close() }; arc(13f, 12f, 4f, -50f, 100f); arc(13f, 12f, 7.5f, -50f, 100f) }
             KI.SIREN -> { path { moveTo(6f, 18f); lineTo(6f, 12f); cubicTo(6f, 8.5f, 8.5f, 6f, 12f, 6f); cubicTo(15.5f, 6f, 18f, 8.5f, 18f, 12f); lineTo(18f, 18f) }; line(4f, 18.5f, 20f, 18.5f); line(12f, 2f, 12f, 3.5f); line(4f, 5f, 5f, 6f); line(20f, 5f, 19f, 6f) }
         }
     }
@@ -577,7 +582,7 @@ fun SosPillButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        KIcon(KI.SIREN, Color.White, size = 20.dp)
+        KIcon(KI.WARN, Color.White, size = 20.dp)
         Text(
             text = label,
             style = MaterialTheme.typography.titleMedium.copy(
@@ -614,7 +619,7 @@ fun BigSosButton(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        KIcon(KI.SIREN, Color.White, size = 48.dp)
+        KIcon(KI.WARN, Color.White, size = 48.dp)
         Spacer(Modifier.width(16.dp))
         Text(
             text = label,

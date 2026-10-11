@@ -36,6 +36,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,58 +109,91 @@ private fun fieldHeat(p: CallPalette, distanceM: Double?, prox: Proximity?): Col
 }
 
 /**
- * Find: the whole screen becomes the heat of the search. Sound arcs pulse from the centre, faster as the person gets
- * nearer. The dial and arrow appear only in modes where FindResolver allows a direction; every other mode shows what
- * it does know (distance, closeness, a last position) and says why the rest is withheld.
+ * Find, as in prototype v3: the whole screen is one colour that shifts with distance (blue far, green, yellow, orange near),
+ * darkened so white text always reads. The arrow and its wedge appear only in modes where FindResolver allows a direction;
+ * every other mode shows what it does know (distance, closeness, a last position) and says why the rest is withheld.
  */
 @Composable
 fun FindScreen(ui: FindUi?, onStop: () -> Unit, needRangingPermission: Boolean, onAllowRanging: () -> Unit, onTrustAngle: (Boolean) -> Unit, onGroundTruth: (Double?) -> Unit, onLight: (Int, Int) -> Unit = { _, _ -> }, onBack: () -> Unit = onStop) {
-    val p = LocalCall.current
+    val p0 = LocalCall.current
     var askLight by remember { mutableStateOf(false) }
     val speaker = rememberSpeaker()
     if (ui == null) { CallPage(stringResource(R.string.find_mode_none), onStop) {}; return }
     val s = ui.state
-    val hot = fieldHeat(p, s.distanceM, s.proximity)
-    val field by animateColorAsState(hot ?: p.ground, tween(900), label = "field")
+    val base = fieldHeat(p0, s.distanceM, s.proximity) ?: Color(0xFF5B8DB8)
+    val field by animateColorAsState(base, tween(900), label = "field")
+    val (hi, deep) = findBackgroundGradients(field)
     val still = rememberReducedMotion()
-    // Nearer means a faster pulse: about 0.9 s when within a few metres, 3.2 s when far.
-    val dist = s.distanceM
-    val periodMs = when { dist != null -> (900 + (dist.coerceIn(2.0, 150.0) / 150.0 * 2300)).toInt(); s.proximity == Proximity.VERY_CLOSE -> 900; s.proximity == Proximity.NEAR -> 1500; else -> 3200 }
-    val phase = if (still || hot == null) null else rememberInfiniteTransition(label = "find").animateFloat(0f, 1f, infiniteRepeatable(tween(periodMs, easing = LinearEasing), RepeatMode.Restart), label = "pulse")
-
-    if (askLight) LightUpDialog(ui.targetName, onSend = { m, d -> onLight(m, d); askLight = false }, onDismiss = { askLight = false })
-    Box(Modifier.fillMaxSize().background(p.ground)) {
-        Canvas(Modifier.fillMaxSize()) {
-            val c = Offset(size.width / 2, size.height * 0.36f)
-            drawRect(Brush.radialGradient(listOf(field.copy(alpha = if (p.night) 0.85f else 0.55f), field.copy(alpha = 0.18f), Color.Transparent), c, size.maxDimension * 0.75f))
-            if (hot != null) soundArcs(c, size.width * 0.75f, phase?.value ?: 0.4f, listOf(Color.White, field, field), count = 4, width = 3f)
-        }
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            CallTopBar(stringResource(R.string.find_title, ui.targetName), onBack)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // A position heard in the last 30 s is a GPS reading, not a prediction: label it as such.
-            val fresh = (s.targetFixAgeMs ?: Long.MAX_VALUE) <= app.linkfill.core.find.FindResolver.TARGET_RECENT_MS
-            ModeChip(if (s.mode == FindMode.PREDICTED && fresh) FindMode.LOCATION_BEARING else s.mode, s.arrowSource == app.linkfill.core.find.Source.BLE_TURN)
-                ui.linkMedium?.let { Spacer(Modifier.width(8.dp)); LivePill(it, if (it.startsWith("Wi-Fi")) p.ok else p.sky) }
+    val drift = if (still) null else rememberInfiniteTransition(label = "blob").animateFloat(0f, 1f, infiniteRepeatable(tween(14_000, easing = LinearEasing), RepeatMode.Reverse), label = "d")
+    val sentence = spokenFind(ui.targetName, s.distanceM, ui.arrowSmoothedDeg)
+    // The whole screen is white-on-colour, so every component below reads white inks.
+    val fp = p0.copy(ink = Color.White, inkMuted = Color(0xC7FFFFFF), glass = Color(0x2EFFFFFF), glassStrong = Color(0x33FFFFFF), line = Color(0x4DFFFFFF), gline = Color(0x4DFFFFFF))
+    CompositionLocalProvider(LocalCall provides fp) {
+        if (askLight) LightUpDialog(ui.targetName, onSend = { m, d -> onLight(m, d); askLight = false }, onDismiss = { askLight = false })
+        Box(Modifier.fillMaxSize().background(deep)) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawRect(Brush.radialGradient(listOf(hi, deep), Offset(size.width * 0.5f, size.height * 0.22f), size.width * 1.3f))
+                val k = drift?.value ?: 0.4f
+                val r = 220.dp.toPx()
+                val a = Offset(-20.dp.toPx() + 70.dp.toPx() * k, 230.dp.toPx() + 90.dp.toPx() * k)
+                val b = Offset(size.width + 20.dp.toPx() - 60.dp.toPx() * k, size.height - 160.dp.toPx() - 80.dp.toPx() * k)
+                drawCircle(Brush.radialGradient(listOf(field.copy(alpha = 0.34f), Color.Transparent), a, r), r, a)
+                drawCircle(Brush.radialGradient(listOf(field.copy(alpha = 0.34f), Color.Transparent), b, r), r, b)
             }
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) { Hero(ui) }
-
-            // Why: every withheld claim is explained.
-            val notes = s.notes.mapNotNull { noteText(it) }
-            if (notes.isNotEmpty() || needRangingPermission) Glass(padding = PaddingValues(14.dp)) {
-                for (n in notes) Row(Modifier.padding(vertical = 3.dp)) {
-                    Box(Modifier.padding(top = 7.dp).size(7.dp).clip(CircleShape).background(p.gold)); Spacer(Modifier.width(10.dp))
-                    Text(n, style = MaterialTheme.typography.bodyLarge, color = p.ink)
+            Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            Column(
+                Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(44.dp).clip(CircleShape).background(Color(0x30FFFFFF)).border(1.dp, Color(0x4DFFFFFF), CircleShape).clickable(onClick = onBack),
+                        contentAlignment = Alignment.Center,
+                    ) { KIcon(KI.CHEVRON, Color.White, 30.dp, stringResource(R.string.back), Modifier.graphicsLayer { rotationZ = 180f }) }
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(ui.targetName, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1)
+                        ui.linkMedium?.let { Text(it, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xBFFFFFFF), maxLines = 1) }
+                    }
+                    Spacer(Modifier.size(44.dp))
                 }
-                if (needRangingPermission) { Spacer(Modifier.height(8.dp)); CallButton(stringResource(R.string.find_allow_ranging), onAllowRanging, icon = KI.RADAR) }
+                // A position heard in the last 30 s is a GPS reading, not a prediction: label it as such.
+                val fresh = (s.targetFixAgeMs ?: Long.MAX_VALUE) <= app.linkfill.core.find.FindResolver.TARGET_RECENT_MS
+                ModeChip(if (s.mode == FindMode.PREDICTED && fresh) FindMode.LOCATION_BEARING else s.mode, s.arrowSource == app.linkfill.core.find.Source.BLE_TURN)
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) { Hero(ui) }
+
+                // Why: every withheld claim is explained.
+                val notes = s.notes.mapNotNull { noteText(it) }
+                if (notes.isNotEmpty() || needRangingPermission) Glass(padding = PaddingValues(14.dp)) {
+                    for (n in notes) Row(Modifier.padding(vertical = 3.dp)) {
+                        Box(Modifier.padding(top = 7.dp).size(7.dp).clip(CircleShape).background(Color.White)); Spacer(Modifier.width(10.dp))
+                        Text(n, style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                    }
+                    if (needRangingPermission) { Spacer(Modifier.height(8.dp)); CallButton(stringResource(R.string.find_allow_ranging), onAllowRanging, icon = KI.RADAR) }
+                }
+                Sources(ui, onTrustAngle, onGroundTruth)
             }
-            Sources(ui, onTrustAngle, onGroundTruth)
-            val sentence = spokenFind(ui.targetName, s.distanceM, ui.arrowSmoothedDeg)
-            CallButton(stringResource(R.string.voice_speak), { speaker.say(sentence) }, tone = Tone.QUIET, icon = KI.BELL)
-            CallButton(stringResource(R.string.light_button), { askLight = true }, tone = Tone.QUIET, icon = KI.SIREN)
-            CallButton(stringResource(R.string.find_stop), onStop, tone = Tone.QUIET, icon = KI.CLOSE)
-            Spacer(Modifier.height(20.dp))
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                FindGlassButton(null, KI.SPEAKER, stringResource(R.string.voice_speak), Modifier.size(60.dp)) { speaker.say(sentence) }
+                FindGlassButton(stringResource(R.string.light_button), KI.BOLT, null, Modifier.weight(1f)) { askLight = true }
+                FindGlassButton(stringResource(R.string.find_stop), KI.CLOSE, null, Modifier.weight(1f), onStop)
+            }
+            }
         }
+    }
+}
+
+/** The frosted white button of the Find screen: a label, an icon, or both; at least 60 dp tall. */
+@Composable
+private fun FindGlassButton(text: String?, icon: KI, description: String?, modifier: Modifier, onClick: () -> Unit) {
+    Row(
+        modifier.height(60.dp).clip(RoundedCornerShape(30.dp)).background(Color(0x38FFFFFF)).border(1.dp, Color(0x4DFFFFFF), RoundedCornerShape(30.dp)).pressFeedback().clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
+    ) {
+        KIcon(icon, Color.White, 22.dp, description)
+        if (text != null) { Spacer(Modifier.width(8.dp)); Text(text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White, maxLines = 1) }
     }
 }
 
@@ -186,7 +223,8 @@ private fun Hero(ui: FindUi) {
     val p = LocalCall.current
     val s = ui.state
     val precise = s.arrowSource == app.linkfill.core.find.Source.UWB
-    Dial(ui.arrowSmoothedDeg, ui.headingTrue, s.arrowUncertaintyDeg, dim = !precise)
+    val onTarget = ui.arrowSmoothedDeg?.let { kotlin.math.abs(app.linkfill.core.find.Angles.normalize180(it)) < 9 } == true && (s.distanceM ?: 0.0) > 15
+    Dial(ui.arrowSmoothedDeg, s.arrowUncertaintyDeg, dim = !precise, onTarget = onTarget)
     if (ui.arrowSmoothedDeg != null) Steer(ui.arrowSmoothedDeg)
     else Text(stringResource(R.string.find_searching), style = MaterialTheme.typography.headlineSmall, color = p.ink, textAlign = TextAlign.Center)
     when (s.mode) {
@@ -208,58 +246,70 @@ private fun Hero(ui: FindUi) {
         }
         FindMode.UNAVAILABLE -> Unit
     }
+    if (s.mode != FindMode.BLE_PROXIMITY && s.mode != FindMode.UNAVAILABLE) s.distanceM?.let { Text(stringResource(R.string.find_steps, (it / 0.7).roundToInt().coerceAtLeast(1)), style = MaterialTheme.typography.titleMedium, color = p.inkMuted) }
     if (ui.arrowSmoothedDeg != null) s.arrowSource?.let { Text(it.label, style = MaterialTheme.typography.bodyMedium, color = p.inkMuted, textAlign = TextAlign.Center) }
 }
 
-/** Apple-style Precision Finding navigator. */
+/** The Find arrow of prototype v3: a white arrow in a thin ring, a soft wedge as wide as the direction is unsure, rings that pulse when you point straight at them. */
 @Composable
-private fun Dial(angleDeg: Double?, headingDeg: Double?, uncertaintyDeg: Double?, dim: Boolean = false) {
-    val p = LocalCall.current
-    Box(Modifier.size(320.dp).semantics { contentDescription = "Precision Navigator" }, contentAlignment = Alignment.Center) {
-        if (angleDeg != null) {
-            val isAhead = Math.abs(angleDeg % 360) < 15 || Math.abs(angleDeg % 360) > 345
-            Canvas(Modifier.fillMaxSize()) {
-                val c = center
-                val r = size.minDimension / 2
-                if (isAhead) {
-                    drawCircle(Brush.radialGradient(listOf(Color(0xFF34C759).copy(alpha = 0.3f), Color.Transparent), c, r), r, c)
-                }
-                rotate(angleDeg.toFloat()) {
-                    val w = size.width; val h = size.height
-                    val path = Path().apply { moveTo(w / 2, h * 0.15f); lineTo(w * 0.75f, h * 0.65f); lineTo(w / 2, h * 0.55f); lineTo(w * 0.25f, h * 0.65f); close() }
-                    val arrowColor = if (isAhead) Color(0xFF34C759) else (if (p.night) Color.White else p.ink)
-                    drawPath(path, arrowColor.copy(alpha = if (dim) 0.5f else 1f))
-                    val unc = uncertaintyDeg?.coerceIn(0.0, 90.0)?.toFloat()
-                    if (unc != null) {
-                        drawArc(arrowColor.copy(alpha = 0.15f), -90f - unc, unc * 2, true, Offset(c.x - r * 0.8f, c.y - r * 0.8f), Size(r * 1.6f, r * 1.6f))
-                    }
-                }
+private fun Dial(angleDeg: Double?, uncertaintyDeg: Double?, dim: Boolean, onTarget: Boolean) {
+    val still = rememberReducedMotion()
+    val ring = if (still || !onTarget) null else rememberInfiniteTransition(label = "ring").animateFloat(0f, 1f, infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart), label = "r")
+    Box(Modifier.size(270.dp).semantics { contentDescription = "Precision Navigator" }, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = center
+            val k = size.minDimension / 300f
+            drawCircle(Color.White.copy(alpha = 0.22f), 138f * k, c, style = Stroke(1.5.dp.toPx()))
+            if (ring != null) for (off in listOf(0f, 0.5f)) {
+                val t = (ring.value + off) % 1f
+                drawCircle(Color.White.copy(alpha = 0.9f * (1f - t)), 120f * k * (0.7f + 0.65f * t), c, style = Stroke(2.dp.toPx()))
             }
-        } else {
-            // Searching: a faint needle sweeps round so it is obvious no direction is being claimed yet.
-            val still = rememberReducedMotion()
-            val sweep = if (still) null else rememberInfiniteTransition(label = "sweep").animateFloat(0f, 360f, infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart), label = "needle")
-            val ink = if (p.night) Color.White else p.ink
-            Canvas(Modifier.fillMaxSize()) {
-                val r = size.minDimension / 2
-                drawCircle(ink.copy(alpha = 0.25f), r * 0.8f, center, style = Stroke(2.dp.toPx()))
-                rotate(sweep?.value ?: 0f) {
-                    drawArc(Brush.sweepGradient(listOf(Color.Transparent, ink.copy(alpha = 0.22f)), center), -150f, 60f, true, Offset(center.x - r * 0.8f, center.y - r * 0.8f), Size(r * 1.6f, r * 1.6f))
-                    val w = size.width; val h = size.height
-                    drawPath(Path().apply { moveTo(w / 2, h * 0.15f); lineTo(w * 0.75f, h * 0.65f); lineTo(w / 2, h * 0.55f); lineTo(w * 0.25f, h * 0.65f); close() }, ink.copy(alpha = 0.25f))
-                }
+            if (angleDeg != null) rotate(angleDeg.toFloat()) {
+                val unc = uncertaintyDeg?.coerceIn(0.0, 90.0)?.toFloat()
+                if (unc != null && unc > 0f) drawArc(Color.White.copy(alpha = 0.13f), -90f - unc, unc * 2, true, Offset(c.x - 145f * k, c.y - 145f * k), Size(290f * k, 290f * k))
+                val arrow = Path().apply { moveTo(c.x, c.y - 92f * k); for ((x, y) in listOf(56f to 30f, 14f to 14f, 14f to 88f, -14f to 88f, -14f to 14f, -56f to 30f)) lineTo(c.x + x * k, c.y + y * k); close() }
+                val a = 1f // direction trust is shown by the wedge and the mode chip, not by a see-through arrow
+                val shadow = Path().apply { addPath(arrow, Offset(0f, 10f * k)) }
+                drawPath(shadow, Color.Black.copy(alpha = 0.18f * a))
+                val brush = Brush.verticalGradient(listOf(Color.White.copy(alpha = a), Color.White.copy(alpha = 0.72f * a)), startY = c.y - 92f * k, endY = c.y + 88f * k)
+                drawPath(arrow, brush)
+                drawPath(arrow, brush, style = Stroke(12f * k, join = StrokeJoin.Round))
+            } else {
+                // Searching: a faint needle sweeps round so it is obvious no direction is being claimed yet.
+                drawCircle(Color.White.copy(alpha = 0.18f), 100f * k, c, style = Stroke(2.dp.toPx()))
             }
+        }
+        if (angleDeg == null) Searching()
+    }
+}
+
+@Composable
+private fun Searching() {
+    val still = rememberReducedMotion()
+    val sweep = if (still) null else rememberInfiniteTransition(label = "sweep").animateFloat(0f, 360f, infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart), label = "needle")
+    Canvas(Modifier.fillMaxSize()) {
+        val r = size.minDimension / 2
+        rotate(sweep?.value ?: 0f) {
+            drawArc(Brush.sweepGradient(listOf(Color.Transparent, Color.White.copy(alpha = 0.28f)), center), -150f, 60f, true, Offset(center.x - r * 0.8f, center.y - r * 0.8f), Size(r * 1.6f, r * 1.6f))
+            val w = size.width; val h = size.height
+            drawPath(Path().apply { moveTo(w / 2, h * 0.15f); lineTo(w * 0.75f, h * 0.65f); lineTo(w / 2, h * 0.55f); lineTo(w * 0.25f, h * 0.65f); close() }, Color.White.copy(alpha = 0.25f))
         }
     }
 }
 
-/** The distance, as large as the screen allows; with GPS error it is "about N m (A M m)" and smaller. */
+/** The distance, as large as the screen allows, counting up or down as it changes; with GPS error it is "about N m (A M m)" and smaller. */
 @Composable
 private fun BigDistance(m: Double?, uncertaintyM: Double?) {
     val p = LocalCall.current
     if (m == null) return
-    if (uncertaintyM != null) Text(stringResource(R.string.find_distance_unc, m.roundToInt(), uncertaintyM.roundToInt()), style = MaterialTheme.typography.headlineMedium, color = p.ink)
-    else Text(stringResource(R.string.find_distance, m.roundToInt()), fontFamily = Bricolage, fontWeight = FontWeight.ExtraBold, fontSize = 92.sp, lineHeight = 92.sp, color = p.ink)
+    val shown by animateIntAsState(m.roundToInt(), tween(700), label = "roll")
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Row(verticalAlignment = Alignment.Bottom) {
+        Text("$shown", fontFamily = Bricolage, fontWeight = FontWeight.Bold, fontSize = if (shown >= 1000) 84.sp else 112.sp, lineHeight = if (shown >= 1000) 84.sp else 112.sp, letterSpacing = (-7).sp, color = p.ink)
+        Text(" m", fontSize = 30.sp, fontWeight = FontWeight.SemiBold, color = p.inkMuted, modifier = Modifier.padding(bottom = 14.dp))
+    }
+    if (uncertaintyM != null) Text(stringResource(R.string.find_plusminus, uncertaintyM.roundToInt()), style = MaterialTheme.typography.titleMedium, color = p.inkMuted)
+    }
 }
 
 @Composable
