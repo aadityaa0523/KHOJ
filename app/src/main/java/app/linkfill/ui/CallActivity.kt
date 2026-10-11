@@ -87,7 +87,7 @@ private fun FeedRow(f: FeedItem, now: Long, divider: Boolean) {
 
 /** The row of prototype v3 .li: a coloured rounded tile with a white icon, a title, and a quiet second line. */
 @Composable
-fun ActivityRow(icon: KI, tile: Color, title: String, subtitle: String, divider: Boolean, onClick: (() -> Unit)?) {
+fun ActivityRow(icon: KI, tile: Color, title: String, subtitle: String?, divider: Boolean, chevron: Boolean = false, onClick: (() -> Unit)?) {
     val p = LocalCall.current
     Box {
         if (divider) Box(Modifier.padding(start = 66.dp).fillMaxWidth().height(1.dp).background(p.hair))
@@ -99,8 +99,9 @@ fun ActivityRow(icon: KI, tile: Color, title: String, subtitle: String, divider:
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = p.ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                Text(subtitle, fontSize = 13.sp, color = p.inkMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (!subtitle.isNullOrBlank()) Text(subtitle, fontSize = 13.sp, color = p.inkMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
+            if (chevron) KIcon(KI.CHEVRON, p.inkMuted, 20.dp)
         }
     }
 }

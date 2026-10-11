@@ -203,4 +203,5 @@
     <string name="tab_board">SOS बोर्ड</string>
     <string name="tab_scan">स्कैन</string>
     <string name="tab_alerts">अलर्ट</string>
+    <string name="band_pass_label">KHOJ · बच्चे का बैंड</string>
 </resources>

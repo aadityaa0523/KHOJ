@@ -260,26 +260,36 @@ private fun Shell(
 
 // ------------------------------------------------------------------ splash
 
-/** Loader: the wordmark calls out once, its sound arcs rippling across the screen, while the mesh starts. */
+/** Loader: the mark springs in, soft sonar rings spread behind it, and the wordmark settles while the mesh starts. */
 @Composable
 private fun Splash(onDone: () -> Unit) {
     val p = LocalCall.current
     val still = rememberReducedMotion()
-    val ripple = remember { Animatable(0f) }
+    val rise = remember { Animatable(if (still) 1f else 0f) }
+    val rings = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        if (still) delay(500) else ripple.animateTo(1f, tween(1500, easing = LinearEasing))
+        if (still) delay(500) else {
+            launch { rings.animateTo(1f, tween(1700, easing = LinearEasing)) }
+            rise.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessLow))
+            delay(700)
+        }
         onDone()
     }
     CallBackground {
         Canvas(Modifier.fillMaxSize()) {
-            soundArcs(center, size.maxDimension * 0.75f, ripple.value * 2.4f % 1f, listOf(p.gold, p.fire, p.violet, p.sky), count = 6, width = 3f)
+            for (k in 0 until 3) {
+                val t = ((rings.value * 1.6f) - k * 0.22f).coerceIn(0f, 1f)
+                if (t > 0f) drawCircle(p.blue.copy(alpha = (1f - t) * 0.30f), size.minDimension * (0.12f + 0.55f * t), Offset(size.width / 2, size.height * 0.42f), style = Stroke(2.dp.toPx()))
+            }
         }
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("KHOJ", fontFamily = Bricolage, fontWeight = FontWeight.ExtraBold, fontSize = 64.sp, letterSpacing = 8.sp, color = p.ink,
-                modifier = Modifier.graphicsLayer { alpha = if (still) 1f else 0.4f + 0.6f * minOf(1f, ripple.value * 3f) })
-            Text("खोज", fontWeight = FontWeight.Bold, fontSize = 26.sp, color = p.gold)
-            Spacer(Modifier.height(18.dp))
-            Text(stringResource(R.string.tagline), style = MaterialTheme.typography.bodyLarge, color = p.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 40.dp))
+        Column(Modifier.fillMaxSize().padding(bottom = 90.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.graphicsLayer { val a = rise.value; scaleX = 0.7f + 0.3f * a; scaleY = 0.7f + 0.3f * a; alpha = a.coerceIn(0f, 1f) }) { LogoMark(104.dp) }
+            Spacer(Modifier.height(22.dp))
+            Text("KHOJ", fontFamily = Bricolage, fontWeight = FontWeight.Bold, fontSize = 44.sp, letterSpacing = 6.sp, color = p.ink,
+                modifier = Modifier.graphicsLayer { alpha = rise.value.coerceIn(0f, 1f) })
+            Text("खोज", fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = p.blue, modifier = Modifier.graphicsLayer { alpha = rise.value.coerceIn(0f, 1f) })
+            Spacer(Modifier.height(16.dp))
+            Text(stringResource(R.string.tagline), style = MaterialTheme.typography.bodyLarge, color = p.inkMuted, textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 40.dp).graphicsLayer { alpha = rise.value.coerceIn(0f, 1f) })
         }
     }
 }
@@ -311,32 +321,6 @@ private fun AlarmBeat(alerts: List<HomeAlert>, content: @Composable () -> Unit) 
 }
 
 // ------------------------------------------------------------------ radar tab (members)
-
-@Composable
-private fun RadarHeader(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit, onSos: () -> Unit = {}, onFind: (Int) -> Unit = {}, onOpen: (app.linkfill.core.voice.VoiceTarget) -> Unit = {}, modifier: Modifier = Modifier) {
-    val p = LocalCall.current
-    var voice by remember { mutableStateOf(false) }
-    if (voice) VoiceDialog(s, mesh, setNight = setNight, onFind = onFind, onSos = onSos, onOpen = onOpen, onDismiss = { voice = false })
-    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("KHOJ", fontFamily = Bricolage, fontWeight = FontWeight.ExtraBold, fontSize = 28.sp, letterSpacing = 4.sp, color = p.ink)
-            Text("खोज", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = p.gold, modifier = Modifier.padding(start = 8.dp, top = 4.dp))
-            Spacer(Modifier.weight(1f))
-            GlassIconButton(KI.MIC, stringResource(R.string.voice_mic)) { voice = true }
-            Spacer(Modifier.width(8.dp))
-            SosPillButton(onClick = onSos)
-            Spacer(Modifier.width(8.dp))
-            GlassIconButton(if (night) KI.SUN else KI.MOON, stringResource(if (night) R.string.theme_day else R.string.theme_night)) { setNight(!night) }
-        }
-        val live = s.members.count { s.now - it.heardAt < 45_000 }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            LivePill((if (s.running) stringResource(R.string.status_on, live) else stringResource(R.string.status_off)) +
-                if (s.running && s.lowPower) " · " + stringResource(R.string.low_power_on) else "", if (s.running) p.ok else p.alarm)
-            if (!s.running) { Spacer(Modifier.width(8.dp)); FilledTonalButton(onClick = mesh::start, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.turn_on)) } }
-        }
-        s.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
-    }
-}
 
 /** Small direction arrow in the person's heat colour, relative to where the phone faces. */
 @Composable
@@ -380,38 +364,33 @@ internal fun AlarmCard(a: HomeAlert, s: MeshUiState, onDismiss: () -> Unit, onRe
 private fun BoardTab(s: MeshUiState, mesh: MeshController, night: Boolean, setNight: (Boolean) -> Unit) {
     val p = LocalCall.current
     val me = s.myFix
-    val pts = s.sosBoard.filter { MeshController.hasPosition(it.lat, it.lon) }
-        .map { a -> RadarPoint((a.originId.toLong() shl 32) or (a.packetId.toLong() and 0xFFFFFFFFL), a.label, a.lat, a.lon, false, false, a.kind.label) }
-    val placed = if (me != null) place(pts, me.latitude, me.longitude) else emptyList()
     fun dist(lat: Double, lon: Double) = if (me != null && MeshController.hasPosition(lat, lon)) GapEstimator.distanceM(me.latitude, me.longitude, lat, lon) else null
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        RadarHeader(s, mesh, night, setNight)
+    TabPage(stringResource(R.string.sos_nearby)) {
         for (a in s.alerts) AlarmCard(a, s, onDismiss = { mesh.dismissAlert(a.key) }, onRewind = null)
-        Text(stringResource(R.string.sos_nearby), style = MaterialTheme.typography.headlineSmall, color = p.ink)
-        if (s.sosBoard.isEmpty()) Text(stringResource(R.string.none_needing_help), style = MaterialTheme.typography.bodyLarge, color = p.inkMuted)
-        else Glass(rim = heatRim(), padding = PaddingValues(14.dp)) {
-            GuideWords(placed, stringResource(R.string.nearest), stringResource(R.string.farthest))
-            CallRadar(placed, s.headingDeg, null, me != null, stringResource(R.string.find_note_my_loc_missing), "", stringResource(R.string.you), onTap = {}, modifier = Modifier.fillMaxWidth().height(300.dp))
-        }
-        for (a in s.sosBoard.sortedBy { dist(it.lat, it.lon) ?: Double.MAX_VALUE }) {
-            val d = dist(a.lat, a.lon)
-            val b = if (me != null && d != null) GapEstimator.bearingDeg(me.latitude, me.longitude, a.lat, a.lon) else null
-            Glass(padding = PaddingValues(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    HeatDisc(a.label, heat(p, d), 44.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("${a.kind.label}: ${a.label}", style = MaterialTheme.typography.titleLarge, color = p.ink)
-                        Text((if (d != null && b != null) "${d.roundToInt()} m${dirWord(b, s)}" else stringResource(R.string.position_unknown)) + " · " +
-                            stringResource(R.string.seen_ago, agoText(s.now - a.at)), style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
-                        if (a.responders.isNotEmpty()) Text(a.responders.joinToString(), style = MaterialTheme.typography.labelLarge, color = p.ok)
+        if (s.sosBoard.isEmpty()) Text(stringResource(R.string.none_needing_help), style = MaterialTheme.typography.bodyLarge, color = p.inkMuted, modifier = Modifier.padding(horizontal = 4.dp))
+        else InsetCard {
+            for ((i, a) in s.sosBoard.sortedBy { dist(it.lat, it.lon) ?: Double.MAX_VALUE }.withIndex()) {
+                val d = dist(a.lat, a.lon)
+                val b = if (me != null && d != null) GapEstimator.bearingDeg(me.latitude, me.longitude, a.lat, a.lon) else null
+                Box {
+                    if (i > 0) Box(Modifier.padding(start = 70.dp).fillMaxWidth().height(1.dp).background(p.hair))
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            MemberAvatar(a.label, colorIndex = i, size = 46.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("${a.kind.label}: ${a.label}", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = p.ink)
+                                Text((if (d != null && b != null) "${d.roundToInt()} m${dirWord(b, s)}" else stringResource(R.string.position_unknown)) + " \u00b7 " +
+                                    stringResource(R.string.seen_ago, agoText(s.now - a.at)), fontSize = 13.sp, color = p.inkMuted)
+                                if (a.responders.isNotEmpty()) Text(a.responders.joinToString(), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = p.green)
+                            }
+                            if (b != null && s.headingDeg != null) MiniArrow((b - s.headingDeg).toFloat(), p.blue)
+                        }
+                        if (!a.iResponded) CallButton(stringResource(R.string.im_going), { mesh.respond(a) }, icon = KI.WALK, tone = Tone.ALARM)
                     }
-                    if (b != null && s.headingDeg != null) MiniArrow((b - s.headingDeg).toFloat(), heat(p, d))
                 }
-                if (!a.iResponded) { Spacer(Modifier.height(10.dp)); CallButton(stringResource(R.string.im_going), { mesh.respond(a) }, icon = KI.WALK, tone = Tone.ALARM) }
             }
         }
-        Spacer(Modifier.height(8.dp))
     }
 }
 

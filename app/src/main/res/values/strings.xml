@@ -257,4 +257,5 @@
     <string name="simple_mode_desc">Big faces to tap and one big SOS button. Other tabs stay below.</string>
     <string name="simple_tap">tap to find</string>
     <string name="simple_far">far away</string>
+    <string name="band_pass_label">KHOJ \u00b7 CHILD BAND</string>
 </resources>

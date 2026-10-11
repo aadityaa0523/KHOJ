@@ -41,6 +41,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.Brush
@@ -131,31 +132,31 @@ private fun GlassTile(onClick: () -> Unit, modifier: Modifier = Modifier, select
     )
 }
 
-/** The camera view inside a rounded frame with the heat rim, used by every scan page. */
+/** The camera view inside a rounded frame with white corner brackets, used by every scan page. */
 @Composable
 private fun ScanFrame(onResult: (String) -> Unit) {
-    val shape = RoundedCornerShape(24.dp)
-    Box(Modifier.fillMaxWidth().clip(shape).border(2.dp, heatRim(), shape)) { QrScanner(onResult) }
-}
-
-@Composable
-private fun NoticeRow(icon: KI, tint: Color, text: String, sub: String) {
-    val p = LocalCall.current
-    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        KIcon(icon, tint, 22.dp)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(text, style = MaterialTheme.typography.bodyLarge, color = p.ink)
-            if (sub.isNotBlank()) Text(sub, style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
+    val shape = RoundedCornerShape(28.dp)
+    Box(Modifier.fillMaxWidth().clip(shape)) {
+        QrScanner(onResult)
+        Canvas(Modifier.matchParentSize()) {
+            val m = 28.dp.toPx(); val l = 36.dp.toPx(); val w = 4.dp.toPx()
+            val c = Color.White
+            fun corner(x: Float, y: Float, dx: Float, dy: Float) {
+                drawLine(c, Offset(x, y), Offset(x + dx * l, y), w, StrokeCap.Round); drawLine(c, Offset(x, y), Offset(x, y + dy * l), w, StrokeCap.Round)
+            }
+            corner(m, m, 1f, 1f); corner(size.width - m, m, -1f, 1f); corner(m, size.height - m, 1f, -1f); corner(size.width - m, size.height - m, -1f, -1f)
         }
     }
 }
+
+@Composable
+private fun NoticeRow(icon: KI, tint: Color, text: String, sub: String) = ActivityRow(icon, tint, text, sub, divider = false, onClick = null)
 
 /** Notices or official alerts as quiet rows in one Glass. */
 @Composable
 private fun NoticeList(s: MeshUiState, items: List<Notice>, icon: KI, tint: Color) {
     if (items.isEmpty()) return
-    Glass(Modifier.fillMaxWidth()) {
+    InsetCard {
         items.forEachIndexed { i, n ->
             if (i > 0) Hairline()
             val where = if (n.lat == 0.0 && n.lon == 0.0) "" else whereText(s, n.lat, n.lon).first
@@ -213,31 +214,32 @@ fun SetupFlow(s: MeshUiState, mesh: MeshController) {
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) scanning = true }
     when (step) {
         SetupStep.LANGUAGE -> CallPage(null, null) {
-            Column(Modifier.fillMaxWidth().padding(top = 40.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("KHOJ", style = MaterialTheme.typography.displayLarge, color = p.ink)
-                Text("खोज", style = MaterialTheme.typography.displaySmall, color = p.violet)
+            Column(Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                LogoMark(76.dp)
+                Spacer(Modifier.height(14.dp))
+                Text("KHOJ", fontFamily = Bricolage, fontWeight = FontWeight.Bold, fontSize = 44.sp, letterSpacing = 6.sp, color = p.ink)
+                Text("खोज", fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = p.blue)
                 Text(stringResource(R.string.tagline), style = MaterialTheme.typography.bodyLarge, color = p.inkMuted, modifier = Modifier.padding(top = 8.dp))
             }
             SectionTitle(stringResource(R.string.choose_language))
-            for (pair in LANGUAGES.chunked(2)) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                for ((tag, name) in pair) GlassTile({ setAppLanguage(context, tag); step = SetupStep.ABOUT }, Modifier.weight(1f).heightIn(min = 72.dp), center = true) {
-                    Text(name, style = MaterialTheme.typography.titleLarge, color = p.ink, textAlign = TextAlign.Center)
+            InsetCard {
+                LANGUAGES.forEachIndexed { i, (tag, name) ->
+                    Box {
+                        if (i > 0) Box(Modifier.padding(start = 20.dp).fillMaxWidth().height(1.dp).background(p.hair))
+                        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).pressFeedback(0.98f).clickable { setAppLanguage(context, tag); step = SetupStep.ABOUT }.padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(name, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = p.ink, modifier = Modifier.weight(1f))
+                            KIcon(KI.CHEVRON, p.inkMuted, 20.dp)
+                        }
+                    }
                 }
-                if (pair.size < 2) Spacer(Modifier.weight(1f))
             }
         }
         SetupStep.ABOUT -> CallPage(stringResource(R.string.your_name), onBack = { step = SetupStep.LANGUAGE }) {
             OutlinedTextField(s.name, mesh::setName, singleLine = true, textStyle = MaterialTheme.typography.headlineSmall, modifier = Modifier.fillMaxWidth())
             SectionTitle(stringResource(R.string.i_am))
-            GlassTile({ mesh.setRole(Role.MEMBER); step = SetupStep.FAMILY }, Modifier.fillMaxWidth().heightIn(min = 88.dp)) {
-                RoleIcon(KI.GROUP)
-                Text(stringResource(R.string.role_member), style = MaterialTheme.typography.titleMedium, color = p.ink, modifier = Modifier.weight(1f))
-                KIcon(KI.CHEVRON, p.inkMuted, 20.dp)
-            }
-            GlassTile({ mesh.setRole(Role.VOLUNTEER); step = SetupStep.PERMISSIONS }, Modifier.fillMaxWidth().heightIn(min = 88.dp)) {
-                RoleIcon(KI.SHIELD)
-                Text(stringResource(R.string.role_volunteer), style = MaterialTheme.typography.titleMedium, color = p.ink, modifier = Modifier.weight(1f))
-                KIcon(KI.CHEVRON, p.inkMuted, 20.dp)
+            InsetCard {
+                ActivityRow(KI.GROUP, p.blue, stringResource(R.string.role_member), null, divider = false, chevron = true) { mesh.setRole(Role.MEMBER); step = SetupStep.FAMILY }
+                ActivityRow(KI.SHIELD, p.green, stringResource(R.string.role_volunteer), null, divider = true, chevron = true) { mesh.setRole(Role.VOLUNTEER); step = SetupStep.PERMISSIONS }
             }
             Text(stringResource(R.string.helper_desc), style = MaterialTheme.typography.bodyMedium, color = p.inkMuted)
         }
@@ -247,7 +249,7 @@ fun SetupFlow(s: MeshUiState, mesh: MeshController) {
                 Text(stringResource(R.string.scan_hint), style = MaterialTheme.typography.bodyLarge, color = p.ink)
                 ScanFrame { text -> if (mesh.joinFromQr(text)) { scanning = false; step = SetupStep.PERMISSIONS } }
             } else if (qr != null) {
-                Glass(Modifier.fillMaxWidth(), rim = heatRim()) {
+                InsetCard(padding = PaddingValues(16.dp)) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(stringResource(R.string.family_show_qr), style = MaterialTheme.typography.bodyLarge, color = p.ink, textAlign = TextAlign.Center)
                         QrPanel(qr, stringResource(R.string.family_show_qr))
@@ -266,10 +268,10 @@ fun SetupFlow(s: MeshUiState, mesh: MeshController) {
             }
         }
         SetupStep.PERMISSIONS -> CallPage(stringResource(R.string.permissions_title), onBack = { step = if (s.role == Role.MEMBER) SetupStep.FAMILY else SetupStep.ABOUT }) {
-            Glass(Modifier.fillMaxWidth(), rim = heatRim()) {
+            InsetCard(padding = PaddingValues(16.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        for (k in listOf(KI.RADAR, KI.PIN, KI.BELL, KI.SCAN)) RoleIcon(k)
+                        for ((k, col) in listOf(KI.RADAR to p.blue, KI.PIN to p.green, KI.BELL to p.orange, KI.SCAN to p.violet)) RoleIcon(k, col)
                     }
                     Text(stringResource(R.string.permissions_body), style = MaterialTheme.typography.bodyLarge, color = p.ink)
                 }
@@ -281,11 +283,10 @@ fun SetupFlow(s: MeshUiState, mesh: MeshController) {
     }
 }
 
-/** A drawn icon in a soft violet disc. */
+/** A white icon on a rounded coloured tile, as in the prototype's lists. */
 @Composable
-private fun RoleIcon(kind: KI) {
-    val p = LocalCall.current
-    Box(Modifier.padding(end = 4.dp).size(48.dp).clip(CircleShape).background(p.violet.copy(alpha = 0.22f)), contentAlignment = Alignment.Center) { KIcon(kind, p.ink, 26.dp) }
+private fun RoleIcon(kind: KI, color: Color) {
+    Box(Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(color), contentAlignment = Alignment.Center) { KIcon(kind, Color.White, 28.dp) }
 }
 
 // ------------------------------------------------------------------ group tab
@@ -395,6 +396,23 @@ private fun FamilyPass(qr: String, code: String?, s: MeshUiState) {
     }
 }
 
+/** The child's band as a dark pass: the QR to scan, who to call and where to meet. */
+@Composable
+private fun BandPass(band: Band) {
+    val shape = RoundedCornerShape(26.dp)
+    Box(
+        Modifier.fillMaxWidth().shadow(18.dp, shape, ambientColor = Color(0x59141E32), spotColor = Color(0x59141E32)).clip(shape)
+            .background(Brush.linearGradient(listOf(Color(0xFF26323A), Color(0xFF0F1519)), Offset.Zero, Offset(900f, 1100f))),
+    ) {
+        Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.band_pass_label), fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold, color = Color(0xA6FFFFFF), modifier = Modifier.fillMaxWidth())
+            Box(Modifier.widthIn(max = 280.dp).fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White).padding(10.dp)) { QrImage(band.toQrText(), band.name) }
+            Text(stringResource(R.string.call_number, band.phone), style = MaterialTheme.typography.titleMedium, color = Color.White, textAlign = TextAlign.Center)
+            Text(stringResource(R.string.meet_at, band.meetingPoint), style = MaterialTheme.typography.titleMedium, color = Color(0xCCFFFFFF), textAlign = TextAlign.Center)
+        }
+    }
+}
+
 /** Four dashed rings (30/50/100/200 m); the chosen one glows in its heat colour and is labelled. */
 @Composable
 private fun CirclePicker(selectedM: Int) {
@@ -431,7 +449,7 @@ private fun CirclePicker(selectedM: Int) {
 fun HelpTab(s: MeshUiState, mesh: MeshController, onScanBand: () -> Unit, onBands: () -> Unit, onRewind: () -> Unit) {
     val p = LocalCall.current
     TabPage(stringResource(R.string.found_someone)) {
-        Glass(Modifier.fillMaxWidth(), rim = heatRim()) {
+        InsetCard(padding = PaddingValues(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.scan_hint), style = MaterialTheme.typography.bodyLarge, color = p.inkMuted)
                 CallButton(stringResource(R.string.found_someone), onScanBand, icon = KI.SCAN)
@@ -443,7 +461,7 @@ fun HelpTab(s: MeshUiState, mesh: MeshController, onScanBand: () -> Unit, onBand
         }
         if (s.mySosResponders.isNotEmpty()) {
             SectionTitle(stringResource(R.string.help_coming))
-            Glass(Modifier.fillMaxWidth()) {
+            InsetCard {
                 s.mySosResponders.forEachIndexed { i, r ->
                     if (i > 0) Hairline()
                     NoticeRow(KI.CHECK, p.ok, stringResource(R.string.help_coming_body, r), "")
@@ -541,7 +559,7 @@ fun HelperScanTab(s: MeshUiState, mesh: MeshController, onScanBand: () -> Unit) 
     var description by rememberSaveable { mutableStateOf("") }
     TabPage(stringResource(R.string.scan_band)) {
         CallButton(stringResource(R.string.scan_band), onScanBand, icon = KI.SCAN)
-        if (s.sentReports.isNotEmpty()) Glass(Modifier.fillMaxWidth()) {
+        if (s.sentReports.isNotEmpty()) InsetCard {
             s.sentReports.take(5).forEachIndexed { i, r ->
                 if (i > 0) Hairline()
                 NoticeRow(
@@ -550,7 +568,7 @@ fun HelperScanTab(s: MeshUiState, mesh: MeshController, onScanBand: () -> Unit) 
                 )
             }
         }
-        Glass(Modifier.fillMaxWidth()) {
+        InsetCard(padding = PaddingValues(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.found_no_band), style = MaterialTheme.typography.titleMedium, color = p.ink)
                 OutlinedTextField(description, { description = it.take(60) }, label = { Text(stringResource(R.string.describe_person)) }, modifier = Modifier.fillMaxWidth())
@@ -565,7 +583,7 @@ fun HelperAlertsTab(s: MeshUiState, mesh: MeshController) {
     val p = LocalCall.current
     var official by rememberSaveable { mutableStateOf("") }
     TabPage(stringResource(R.string.official_alert)) {
-        if (s.role == Role.POLICE) Glass(Modifier.fillMaxWidth(), rim = heatRim()) {
+        if (s.role == Role.POLICE) InsetCard(padding = PaddingValues(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.police_alert), style = MaterialTheme.typography.titleMedium, color = p.ink)
                 OutlinedTextField(official, { official = it.take(80) }, label = { Text(stringResource(R.string.police_alert_hint)) }, modifier = Modifier.fillMaxWidth())
@@ -590,8 +608,10 @@ fun BandsPage(s: MeshUiState, mesh: MeshController, onShow: (Band) -> Unit, onBa
     var phone by rememberSaveable { mutableStateOf("") }
     var meet by rememberSaveable { mutableStateOf("") }
     CallPage(stringResource(R.string.child_bands), onBack) {
-        for (b in s.bands) NavRow(KI.BAND, "${b.name}${if (b.age > 0) ", ${b.age}" else ""}") { onShow(b) }
-        Glass(Modifier.fillMaxWidth()) {
+        if (s.bands.isNotEmpty()) InsetCard {
+            s.bands.forEachIndexed { i, b -> ActivityRow(KI.BAND, p.blue, "${b.name}${if (b.age > 0) ", ${b.age}" else ""}", b.meetingPoint, divider = i > 0, chevron = true) { onShow(b) } }
+        }
+        InsetCard(padding = PaddingValues(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.make_band), style = MaterialTheme.typography.titleLarge, color = p.ink)
                 OutlinedTextField(name, { name = it }, label = { Text(stringResource(R.string.band_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -611,13 +631,7 @@ fun ShowBandPage(band: Band, mesh: MeshController, onBack: () -> Unit) {
     val p = LocalCall.current
     var saved by remember { mutableStateOf(false) }
     CallPage(band.name, onBack) {
-        Glass(Modifier.fillMaxWidth(), rim = heatRim()) {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                QrPanel(band.toQrText(), band.name)
-                Text(stringResource(R.string.call_number, band.phone), style = MaterialTheme.typography.titleMedium, color = p.ink, textAlign = TextAlign.Center)
-                Text(stringResource(R.string.meet_at, band.meetingPoint), style = MaterialTheme.typography.titleMedium, color = p.ink, textAlign = TextAlign.Center)
-            }
-        }
+        BandPass(band)
         CallButton(if (saved) stringResource(R.string.band_saved) else stringResource(R.string.save_band), { saved = saveBandImage(context, band) }, icon = if (saved) KI.CHECK else KI.BAND)
         TextButton(onClick = { mesh.deleteBand(band.bandId); onBack() }, modifier = Modifier.align(Alignment.CenterHorizontally).heightIn(min = 48.dp)) {
             Text(stringResource(R.string.delete), color = p.alarm)
@@ -631,7 +645,7 @@ fun FoundBandPage(band: Band, s: MeshUiState, mesh: MeshController, onBack: () -
     val p = LocalCall.current
     var sent by rememberSaveable { mutableStateOf(false) }
     CallPage(band.name, onBack) {
-        Glass(Modifier.fillMaxWidth(), rim = heatRim()) {
+        InsetCard(padding = PaddingValues(18.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("${band.name}${if (band.age > 0) ", ${band.age}" else ""}", style = MaterialTheme.typography.displayMedium, color = p.ink)
                 Text(stringResource(R.string.meet_at, band.meetingPoint), style = MaterialTheme.typography.titleLarge, color = p.ink)
@@ -663,8 +677,10 @@ fun RewindPage(s: MeshUiState, mesh: MeshController, onBack: () -> Unit) {
         for (f in frames) {
             val bmp = remember(f.atMs) { BitmapFactory.decodeByteArray(f.jpeg, 0, f.jpeg.size)?.asImageBitmap() }
             val where = if (f.lat != null && f.lon != null) whereText(s, f.lat, f.lon).first else ""
-            Text(listOf(agoLabel(s.now - f.atMs), where).filter { it.isNotBlank() }.joinToString("  "), style = MaterialTheme.typography.titleMedium, color = p.ink)
-            bmp?.let { Image(it, contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))) }
+            InsetCard {
+                bmp?.let { Image(it, contentDescription = null, contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth()) }
+                Text(listOf(agoLabel(s.now - f.atMs), where).filter { it.isNotBlank() }.joinToString("  "), style = MaterialTheme.typography.titleMedium, color = p.ink, modifier = Modifier.padding(14.dp))
+            }
         }
     }
 }
@@ -707,7 +723,7 @@ fun BatteryGuidancePage(s: MeshUiState, onBack: () -> Unit) {
     val context = LocalContext.current
     val p = LocalCall.current
     CallPage(stringResource(R.string.battery_guidance_title), onBack) {
-        Glass(Modifier.fillMaxWidth(), rim = heatRim()) {
+        InsetCard(padding = PaddingValues(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     KIcon(KI.BATTERY, if (s.batteryUnrestricted) p.ok else p.gold, 28.dp)
@@ -732,7 +748,7 @@ fun BatteryGuidancePage(s: MeshUiState, onBack: () -> Unit) {
             }
         }
 
-        Glass(Modifier.fillMaxWidth()) {
+        InsetCard(padding = PaddingValues(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     stringResource(R.string.battery_guidance_vivo_title),
@@ -748,7 +764,7 @@ fun BatteryGuidancePage(s: MeshUiState, onBack: () -> Unit) {
             }
         }
 
-        Glass(Modifier.fillMaxWidth()) {
+        InsetCard(padding = PaddingValues(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     stringResource(R.string.battery_guidance_cost_title),

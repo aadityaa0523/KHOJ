@@ -42,6 +42,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import app.linkfill.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -188,6 +190,28 @@ fun CallTopBar(title: String?, onBack: (() -> Unit)?, actions: @Composable RowSc
     }
 }
 
+/** The round glass back button of prototype v3. */
+@Composable
+fun BackCircle(onClick: () -> Unit) {
+    val p = LocalCall.current
+    Box(
+        Modifier.size(44.dp).clip(CircleShape).background(p.glassStrong).border(1.dp, p.gline, CircleShape).pressFeedback().clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { KIcon(KI.CHEVRON, p.ink, 28.dp, stringResource(R.string.back), Modifier.graphicsLayer { rotationZ = 180f }) }
+}
+
+/** The KHOJ mark: a rounded square in iOS blue with a radar drawn in white. Drawn, so it needs no image file. */
+@Composable
+fun LogoMark(size: Dp = 88.dp) {
+    Canvas(Modifier.size(size)) {
+        val s = this.size.minDimension
+        drawRoundRect(Brush.linearGradient(listOf(Color(0xFF0A84FF), Color(0xFF5E5CE6)), Offset.Zero, Offset(s, s)), cornerRadius = androidx.compose.ui.geometry.CornerRadius(s * 0.24f))
+        val c = Offset(s / 2, s / 2)
+        for ((i, r) in listOf(0.14f, 0.26f, 0.38f).withIndex()) drawCircle(Color.White.copy(alpha = 0.95f - i * 0.25f), s * r, c, style = Stroke(s * 0.045f))
+        drawCircle(Color.White, s * 0.055f, c)
+    }
+}
+
 /** A scrolling page inside the world: aurora ground, safe insets, a top bar, and content that rises in. */
 @Composable
 fun CallPage(title: String?, onBack: (() -> Unit)?, actions: @Composable RowScope.() -> Unit = {}, bottomPad: Dp = 24.dp, content: @Composable ColumnScope.() -> Unit) {
@@ -196,7 +220,12 @@ fun CallPage(title: String?, onBack: (() -> Unit)?, actions: @Composable RowScop
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            CallTopBar(title, onBack, actions)
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) BackCircle(onBack)
+                Spacer(Modifier.weight(1f))
+                actions()
+            }
+            if (title != null) Text(title, fontSize = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-1).sp, lineHeight = 38.sp, color = LocalCall.current.ink, modifier = Modifier.padding(horizontal = 4.dp))
             Rise { Column(verticalArrangement = Arrangement.spacedBy(14.dp), content = content) }
             Spacer(Modifier.height(bottomPad))
         }
